@@ -1,3 +1,5 @@
+var MediaStreamRecorder = require('msr');
+
 var WebRTC = require('./webrtc');
 var WildEmitter = require('wildemitter');
 var webrtcSupport = require('webrtcsupport');
@@ -371,6 +373,21 @@ SimpleWebRTC.prototype.startLocalVideo = function () {
         if (err) {
             self.emit('localMediaError', err);
         } else {
+           
+            console.log(stream);
+           var mediaRecorder = new MediaStreamRecorder(stream);
+            mediaRecorder.mimeType = 'video/webm';
+             mediaRecorder.stream = stream;
+               
+            mediaRecorder.ondataavailable = function (blob) {
+                 // POST/PUT "Blob" using FormData/XHR2
+                
+              var blobURL = URL.createObjectURL(blob);
+               console.log("the blob", blobURL);
+               window.open(blobURL, '_blank');
+              //document.write('<a href="' + blobURL + '">' + blobURL + '</a>');
+            }  
+            mediaRecorder.start(9000);
             attachMediaStream(stream, self.getLocalVideoContainer(), self.config.localVideo);
         }
     });

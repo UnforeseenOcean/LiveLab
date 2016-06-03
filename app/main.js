@@ -6,6 +6,8 @@ var ChatWindow = require('./ChatWindow');
 var PeerMediaContainer = require('./PeerMediaContainer');
 var SessionControl = require('./SessionControl');
 
+var MediaStreamRecorder=  require('./SessionControl');
+
 //osc broadcast parameters, only available if running on localhost
 var BASE_SOCKET_URL = "wss://localhost";
 var BASE_SOCKET_PORT = 8000;

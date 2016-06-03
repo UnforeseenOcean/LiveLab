@@ -3,33 +3,33 @@
 
 
 function PeerMediaContainer(id, video, webrtc, dashboard){
-	this.id = id;
-	this.createAccordion(id);
-	this.dashboard = dashboard;
-	dashboard.appendChild(this.mediaContainer);
-	this.videoDiv.parentElement.className = "accordion-section open";
-	if(id!="local"){
-		this.videoDiv.appendChild(video);
-		this.video = video;
-	    video.id = 'video_' + id;
-	    video.volume = 0.0;
-	    this.createPeerWindow();
-	 }
-	 
+  this.id = id;
+  this.createAccordion(id);
+  this.dashboard = dashboard;
+  dashboard.appendChild(this.mediaContainer);
+  this.videoDiv.parentElement.className = "accordion-section open";
+  if(id!="local"){
+    this.videoDiv.appendChild(video);
+    this.video = video;
+      video.id = 'video_' + id;
+      video.volume = 0.0;
+      this.createPeerWindow();
+   }
+   
     this.createAudioSelector();
-	this.createVolumeControl();
+  this.createVolumeControl();
 }
 
 PeerMediaContainer.prototype.createAccordion = function(name){
-	this.mediaContainer = document.createElement('div');
-	this.mediaContainer.className = "mediaContainer";
-	var peerHeader = document.createElement('div');
+  this.mediaContainer = document.createElement('div');
+  this.mediaContainer.className = "mediaContainer";
+  var peerHeader = document.createElement('div');
   peerHeader.className = "peer-header";
-	peerHeader.innerHTML = name;
-	this.mediaContainer.appendChild(peerHeader);
-	this.videoDiv = addAccordionItem("video", this.mediaContainer);
-	this.audioDiv = addAccordionItem("audio", this.mediaContainer);
-	this.dataDiv = addAccordionItem("data", this.mediaContainer);
+  peerHeader.innerHTML = name;
+  this.mediaContainer.appendChild(peerHeader);
+  this.videoDiv = addAccordionItem("video", this.mediaContainer);
+  this.audioDiv = addAccordionItem("audio", this.mediaContainer);
+  this.dataDiv  = addAccordionItem("data" , this.mediaContainer);
 }
 
 PeerMediaContainer.prototype.createAudioSelector = function(){
@@ -37,37 +37,37 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
     //show available audio output devices
      navigator.mediaDevices.enumerateDevices()
     .then(function(deviceInfos){
-    	//var masterOutputSelector = document.createElement('select');
-    	var audioOut = document.createElement('div');
-    	audioOut.className = 'outputSelector';
-   		audioOut.id = 'audioOut_' + this.id;
-    	var audioOutLabel = document.createElement('label');
-	    audioOutLabel.innerHTML = 'Select peer audio output: ';
-	    audioOut.appendChild(audioOutLabel);
-	    var audioOutSelector = document.createElement('select');
-	    this.audioDiv.appendChild(audioOut);
-	    audioOut.appendChild(audioOutSelector);
-  		for (var i = 0; i !== deviceInfos.length; ++i) {
-    		var deviceInfo = deviceInfos[i];
-    		var option = document.createElement('option');
-   			option.value = deviceInfo.deviceId;
-   			if (deviceInfo.kind === 'audiooutput') {
-	      		console.info('Found audio output device: ', deviceInfo);
-	      		option.text = deviceInfo.label || 'speaker ' +
-	          	(audioOutSelector.length + 1);
-	          	//option.value = deviceInfo.label;
-	      		//masterOutputSelector.appendChild(option);
-	      		audioOutSelector.appendChild(option);
-    		} else {
-      			console.log('Found non audio output device: ', deviceInfo.label);
-    		}
-  		}
-  		audioOutSelector.addEventListener('change', function(e){
-  			console.log(e.target.value);
-  			console.log(this.video);
-  			attachSinkId(this.video, e.target.value, audioOutSelector);
-  		}.bind(this));
-  		this.audioDiv.appendChild(audioOut);
+      //var masterOutputSelector = document.createElement('select');
+      var audioOut = document.createElement('div');
+      audioOut.className = 'outputSelector';
+      audioOut.id = 'audioOut_' + this.id;
+      var audioOutLabel = document.createElement('label');
+      audioOutLabel.innerHTML = 'Select peer audio output: ';
+      audioOut.appendChild(audioOutLabel);
+      var audioOutSelector = document.createElement('select');
+      this.audioDiv.appendChild(audioOut);
+      audioOut.appendChild(audioOutSelector);
+      for (var i = 0; i !== deviceInfos.length; ++i) {
+        var deviceInfo = deviceInfos[i];
+        var option = document.createElement('option');
+        option.value = deviceInfo.deviceId;
+        if (deviceInfo.kind === 'audiooutput') {
+            console.info('Found audio output device: ', deviceInfo);
+            option.text = deviceInfo.label || 'speaker ' +
+              (audioOutSelector.length + 1);
+              //option.value = deviceInfo.label;
+            //masterOutputSelector.appendChild(option);
+            audioOutSelector.appendChild(option);
+        } else {
+            console.log('Found non audio output device: ', deviceInfo.label);
+        }
+      }
+      audioOutSelector.addEventListener('change', function(e){
+        console.log(e.target.value);
+        console.log(this.video);
+        attachSinkId(this.video, e.target.value, audioOutSelector);
+      }.bind(this));
+      this.audioDiv.appendChild(audioOut);
 
     }.bind(this), successCallback)
     .catch(errorCallback);
@@ -76,7 +76,7 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
 }
 
 PeerMediaContainer.prototype.createVolumeControl = function() {
-	 // volume control
+   // volume control
     var volCntl = document.createElement('div');
     volCntl.className = 'volumeSlide';
     volCntl.id = 'volCntl_' + this.id;
@@ -98,20 +98,22 @@ PeerMediaContainer.prototype.createVolumeControl = function() {
 }
 /* for local stream only; create video controls once video has been added */
 PeerMediaContainer.prototype.addVideoControls = function(){
-	if (!('video' in this)){
-		this.video = this.videoDiv.getElementsByTagName('video')[0];
-		console.log(this.video);
-		this.video.volume = 0.0;
-		this.createPeerWindow();
-	}
+  if (!('video' in this)){
+    this.video = this.videoDiv.getElementsByTagName('video')[0];
+    console.log(this.video);
+    this.video.volume = 0.0;
+    this.createPeerWindow();
+  
+            
+  }
 };
 
 PeerMediaContainer.prototype.destroy = function(){
-	this.dashboard.removeChild(this.mediaContainer);
+  this.dashboard.removeChild(this.mediaContainer);
 };
 
 PeerMediaContainer.prototype.createPeerWindow = function(){
-	 // peer window section
+   // peer window section
     var peerWin = document.createElement('div');
     peerWin.className = 'peerWindow';
     peerWin.id = 'peerWin_' + this.id;
@@ -123,12 +125,12 @@ PeerMediaContainer.prototype.createPeerWindow = function(){
     peerWinButton.onclick = function () {
       peerWindow = window.open("https://" + ip + "/show.html", 'Win_' + this.id, 'popup');
        peerWindow.onload = function(){
-       		console.log(this.video);
-       		 peerWindow.document.getElementById('showVideo').src = this.video.src;
+          console.log(this.video);
+           peerWindow.document.getElementById('showVideo').src = this.video.src;
        }.bind(this);
          console.log(peerWindow);
     
-   		this.peerWindow = peerWindow;
+      this.peerWindow = peerWindow;
     }.bind(this);
     peerWin.appendChild(peerWinButton);
     this.videoDiv.appendChild(peerWin);
@@ -166,25 +168,25 @@ PeerMediaContainer.prototype.createPeerWindow = function(){
 }
 
 function addAccordionItem(name, container){
-	var newSection = document.createElement('div');
-	newSection.className = "accordion-section closed";
-	var divHeader = document.createElement('div');
-	divHeader.innerHTML = name;
-	divHeader.className = "accordion-header";
-	divHeader.onclick = function(e){
-		console.log(e.target.parentElement);
-		if(e.target.parentElement.className=="accordion-section open"){
-			e.target.parentElement.className = "accordion-section closed";
-		} else {
-			e.target.parentElement.className = "accordion-section open";
-		}
-	}
-	newSection.appendChild(divHeader);
-	container.appendChild(newSection);
-	var contentDiv = document.createElement("div");
-	contentDiv.className = "accordion-content "+ name;
-	newSection.appendChild(contentDiv);
-	return contentDiv;
+  var newSection = document.createElement('div');
+  newSection.className = "accordion-section closed";
+  var divHeader = document.createElement('div');
+  divHeader.innerHTML = name;
+  divHeader.className = "accordion-header";
+  divHeader.onclick = function(e){
+    console.log(e.target.parentElement);
+    if(e.target.parentElement.className=="accordion-section open"){
+      e.target.parentElement.className = "accordion-section closed";
+    } else {
+      e.target.parentElement.className = "accordion-section open";
+    }
+  }
+  newSection.appendChild(divHeader);
+  container.appendChild(newSection);
+  var contentDiv = document.createElement("div");
+  contentDiv.className = "accordion-content "+ name;
+  newSection.appendChild(contentDiv);
+  return contentDiv;
 }
 
 

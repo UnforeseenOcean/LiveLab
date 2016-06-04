@@ -36,12 +36,12 @@ function start() {
         setRoom(room);
      } else {
         document.getElementById("createRoom").onsubmit = function(){
-            var val = document.getElementById("sessionInput").value.toLowerCase().replace(/\s/g, '-').replace(/[^A-Za-z0-9_\-]/g, ''); 
+            var val = document.getElementById("sessionInput").value.toLowerCase().replace(/\s/g, '-').replace(/[^A-Za-z0-9_\-]/g, '');
             initWebRTC();
 
             webrtc.createRoom(val, function (err, name) {
                 console.log(' create room cb', arguments);
-            
+
                 var newUrl = location.pathname + '?' + name;
                 if (!err) {
                     history.replaceState({foo: 'bar'}, null, newUrl);
@@ -50,7 +50,7 @@ function start() {
                     console.log(err);
                 }
             });
-            return false;   
+            return false;
         }
      }
 }
@@ -64,7 +64,7 @@ function initWebRTC(){
     webrtc = new SimpleWebRTC({
        // the id/element dom element that will hold our video;
        // it's ok to initialize this to "video_local" as we in all cases
-       // have the local window 
+       // have the local window
        localVideoEl: "video_local",
        localVideo: {
                autoplay: true,
@@ -83,8 +83,8 @@ function initWebRTC(){
        media: {
          audio: {
            optional: [
-          {googAutoGainControl: true}, 
-           {googAutoGainControl2: true}, 
+          {googAutoGainControl: true},
+           {googAutoGainControl2: true},
            {googEchoCancellation: true},
            {googEchoCancellation2: true},
            {googNoiseSuppression: true},
@@ -102,12 +102,12 @@ function initWebRTC(){
     });
     // then we create the divs to contain & display the media streams
     localMedia = new PeerMediaContainer("local", null, webrtc, dashboard);
-    
+
     if(LOCAL_SERVER){
         var osc_config = {
             "socket_port": BASE_SOCKET_PORT,
             "socket_url": BASE_SOCKET_URL
-        }; 
+        };
 
         oscChannels = new LiveLabOsc(osc_config.socket_port, webrtc, localMedia.dataDiv, osc_config.socket_url, peers);
         //localMedia.initOsc(webrtc, osc_config, peers);
@@ -130,11 +130,13 @@ function initWebRTC(){
     });
 
     webrtc.on('channelMessage', function (peer, label, data) {
+
         if (data.type=="chat") {
             var name = document.getElementById("header_" + peer.id).innerHTML;
             chatWindow.appendToChatLog(name, data.payload);
         } else if (data.type=="osc") {
-            oscChannels.receivedRemoteStream(data, peer.id, label);
+          oscChannels.receivedRemoteStream(data, peer.id, label);
+          sessionControl.variableChange(data.payload);
         } else if (data.type === "sessionInfo"){
             // one of the peers changed the name of their window
             if (label === "nameChange") {
@@ -173,12 +175,13 @@ function initWebRTC(){
 function setRoom(name) {
     document.body.removeChild(document.getElementById("createRoom"));
    // document.getElementById("title").innerHTML = name;
-   
+
     var title = document.createElement('div');
     title.innerHTML = name;
     title.id = "title";
     toolbar.appendChild(title);
     document.body.appendChild(toolbar);
+
 }
 
 function addToolbarButton(name, element){

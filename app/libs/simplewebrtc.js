@@ -1,4 +1,5 @@
 var MediaStreamRecorder = require('msr');
+var browsersavefile = require( 'browsersavefile' );
 
 var WebRTC = require('./webrtc');
 var WildEmitter = require('wildemitter');
@@ -369,29 +370,45 @@ SimpleWebRTC.prototype.getEl = function (idOrEl) {
 
 SimpleWebRTC.prototype.startLocalVideo = function () {
     var self = this;
+    
+    // var startDate = new Date();
+
     this.webrtc.startLocalMedia(this.config.media, function (err, stream) {
         if (err) {
             self.emit('localMediaError', err);
         } else {
-           
+    
+            self.stream= stream;
             console.log(stream);
-           var mediaRecorder = new MediaStreamRecorder(stream);
+             
+            var mediaRecorder = new MediaStreamRecorder(stream);
             mediaRecorder.mimeType = 'video/webm';
-             mediaRecorder.stream = stream;
+            mediaRecorder.stream = stream;
                
             mediaRecorder.ondataavailable = function (blob) {
                  // POST/PUT "Blob" using FormData/XHR2
                 
-              var blobURL = URL.createObjectURL(blob);
-               console.log("the blob", blobURL);
-               window.open(blobURL, '_blank');
-              //document.write('<a href="' + blobURL + '">' + blobURL + '</a>');
+               // var blobURL = URL.createObjectURL(blob);
+               // console.log("the  media recorder blob", blobURL);
+//                window.open(blobURL, '_blank');
+             
+                //A Blob() is almost a File() - it's just missing the two properties below which we will add
+               // blobURL.lastModifiedDate = startDate;
+                // blobURL.name = "fileName";
+             
+                  //var blobData = [blob],new Blob( blobURL, {type : 'audio/webm'});
+                  browsersavefile( 'cap.webm', blob );
+
+                  // document.write('<a href="' + blobURL + '">' + blobURL + '</a>');
             }  
-            mediaRecorder.start(9000);
+            
+            //mediaRecorder.start(9000);
             attachMediaStream(stream, self.getLocalVideoContainer(), self.config.localVideo);
+            mediaRecorder.start(10000);
         }
     });
 };
+
 
 SimpleWebRTC.prototype.stopLocalVideo = function () {
     this.webrtc.stopLocalMedia();

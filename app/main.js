@@ -123,6 +123,7 @@ function initWebRTCInteractivosExhibit() {
         c.drawImage(v, 0, h/2, w, h/2);
         setTimeout(draw, 20, c, w, h);
     }
+
     //TODO: 
     // * make sure the layout of everyone connecting is the same
     // * always stream the video in the bottom (via screen sharing)
@@ -133,6 +134,17 @@ function initWebRTCInteractivosExhibit() {
     // * use a different set of events to shareState; to prevent any potential
     //   collisions from e.g. someone using an old version & connecting to the
     //   interactivos room
+    // * limit the number of participating streams; don't show their videos but
+    //   allow them to see everything else
+    // 
+    // EVENTS:
+    // interactivosState: 
+    //   shares the state of all the peers and their ordering
+    //   in the stream
+    // iAmTheVideo:
+    //   event that announces which peer contains the recorded footage stream;
+    //   might not be needed if we just use screen sharing; but can be good to
+    //   have as a smaller (very small, indeed) safeguard against malicious use
     console.log("launch interactivos version of the initwebrtc function"); 
     // first we initialize the webrtc client
     webrtc = new SimpleWebRTC({

@@ -38,11 +38,43 @@ function start() {
     room = location.search && location.search.split('?')[1];
     toolbar = document.createElement('div');
     toolbar.className = "toolbar";
-     if(room) {
-        initWebRTC();
-        setRoom(room);
-     } else {
-        document.getElementById("createRoom").onsubmit = function(){
+    if(room) {
+        if (room === "interactivos") {
+            // remove the creation dialogue
+            document.body.removeChild(document.getElementById("createRoom"));
+
+            // create a video element to contain the local video
+            var vid = document.createElement("video");
+            vid.style = "display: none";
+            vid.id = "video_local";
+            document.body.appendChild(vid);
+
+            // create the canvas element that will contain & display all of the streams
+            var canvas = document.createElement("canvas");
+            canvas.id = "canvas";
+            document.body.appendChild(canvas);
+
+            // create the div that will contain all of the individual streams
+            var containerDiv = document.createElement("div");
+            containerDiv.id = "streams";
+            document.body.appendChild(containerDiv);
+            
+            // create the video element that will house the recorded footage
+            var recordedVid = document.createElement("video");
+            recordedVid.style = "display: none";
+            recordedVid.id = "video_recorded";
+            recordedVid.autoplay = true;
+            recordedVid.muted = true; // doesn't appear to be set in the DOM, wtf
+            document.body.appendChild(recordedVid);
+            
+            // initate everything
+            initWebRTCInteractivosExhibit();
+        } else {
+            initWebRTC();
+            setRoom(room);
+        }
+    } else {
+        document.getElementById("createRoom").onsubmit = function() {
             var val = document.getElementById("sessionInput").value.toLowerCase().replace(/\s/g, '-').replace(/[^A-Za-z0-9_\-]/g, ''); 
             initWebRTC();
 
@@ -60,6 +92,137 @@ function start() {
             return false;   
         }
      }
+}
+
+function initWebRTCInteractivosExhibit() {
+    var numberOfParticipants = 1;
+
+    var canvas = document.getElementById('canvas');
+    var context = canvas.getContext('2d');
+
+    var cw = Math.floor(canvas.clientWidth);
+    var ch = Math.floor(canvas.clientHeight);
+    canvas.width = cw;
+    canvas.height = ch;
+
+    // draw(context, cw, ch);
+    function createStreamVideo(vidSrc, vidId) {
+    }
+
+    function draw(c, w, h) {
+        // draw the smaller streams, sharing the top half of the screen
+        for (var i = 0; i < numberOfParticipants; i++) { 
+            var v = document.getElementById("stream-" + i );
+            c.drawImage(v, w * i / randomNumberOfParticipants, 0, w/numberOfParticipants, h/2);
+        }
+        // draw the large video stream
+        // in the bottom half of the screen
+        // NOTE: currently has a visual bug, with a border separating the two
+        // portions of the canvas - dunno what is the cause
+        v = document.getElementById("video-recorded");
+        c.drawImage(v, 0, h/2, w, h/2);
+        setTimeout(draw, 20, c, w, h);
+    }
+    //TODO: 
+    // * make sure the layout of everyone connecting is the same
+    // * always stream the video in the bottom (via screen sharing)
+    // * wait with drawing the local video until a peer has shared information
+    //   about its position; or just read the roomDescription to calculate which
+    //   position it has
+    // * differentiate video stream of previous days from other peers
+    // * use a different set of events to shareState; to prevent any potential
+    //   collisions from e.g. someone using an old version & connecting to the
+    //   interactivos room
+    console.log("launch interactivos version of the initwebrtc function"); 
+    // first we initialize the webrtc client
+    webrtc = new SimpleWebRTC({
+       localVideoEl: "video_local",
+       localVideo: {
+               autoplay: true,
+               mirror: false,
+               muted: false
+           },
+       // the id/element dom element that will hold remote videos
+       remoteVideosEl: '',
+       // immediately ask for camera access
+       autoRequestMedia: true,
+       debug: false,
+       detectSpeakingEvents: true,
+       autoAdjustMic: false,
+       adjustPeerVolume: false,
+       peerVolumeWhenSpeaking: 1.0,
+       media: {
+         audio: {
+           optional: [
+          {googAutoGainControl: true}, 
+           {googAutoGainControl2: true}, 
+           {googEchoCancellation: true},
+           {googEchoCancellation2: true},
+           {googNoiseSuppression: true},
+           {googNoiseSuppression2: true},
+           {googHighpassFilter: true},
+           {googTypingNoiseDetection: true},
+           {googAudioMirroring: true}
+           ]
+         },
+         video: {
+           optional: [
+           ]
+         }
+       }
+    });
+    
+    webrtc.on('readyToCall', function () {
+        window.localId = webrtc.connection.connection.id;
+        if (room) webrtc.joinRoom(room);
+    });
+
+    webrtc.on('localScreenAdded', function (el) {
+        console.log("localscreenadded");
+        console.log(el);
+         // var newPeer = new PeerMediaContainer("your screen", el, webrtc, dashboard);
+        // peers["localScreenShare"] = newPeer;
+    });
+
+    webrtc.on("localScreenStopped", function (stream) {
+        console.log("local screen stopped");
+        // peers["localScreenShare"].destroy();
+        // delete peers["localScreenShare"];
+    });
+
+    webrtc.on('channelMessage', function (peer, label, data) {
+        console.log("channelMessage", label, data.type);
+        if (data.type === "sessionInfo"){
+            // one of the peers changed the name of their window
+            if (label === "shareState" && !window.hasStateInfo) {
+                // update the state of this client to reflect the state of the room
+                window.stateInfo = JSON.parse(data.payload);
+                window.hasStateInfo = true;
+                // reflect the changes in the browser
+                window.stateInfo.peers.forEach(function(existingPeer) {
+                    if (existingPeer.id !== localId && existingPeer.nick) {
+                        document.getElementById("header_" + existingPeer.id).innerHTML = util.escapeText(existingPeer.nick);
+                    }
+                });
+            }
+        }
+    });
+
+     webrtc.on('videoAdded', function (video, peer) {
+         // TODO: check to make sure that the peer added wasn't the recorded video stream
+         numberOfParticipants++;
+         console.log("video added");
+     });
+
+    var self = this;
+    webrtc.on('videoRemoved', function (video, peer) {
+         // TODO: check to make sure that the peer remove wasn't the video footage
+        numberOfParticipants--;
+        console.log("video removed");
+        // update id of all video elements: decrement by one if their id was
+        // larger than that of the id that just left, otherwise leave the id
+        // alone
+    });
 }
 
 function initWebRTC(){

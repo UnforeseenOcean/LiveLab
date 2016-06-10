@@ -20,30 +20,25 @@ document.addEventListener('DOMContentLoaded', function(){
     draw(context, cw, ch);
 }, false);
 
-// function canvas2canvas(smallCanvas, c, w, h, canvasNumber) {
-//     c.drawImage(smallCanvas, w * canvasNumber / randomNumberOfParticipants, 0, w/randomNumberOfParticipants, h);
-//     setTimeout(canvas2canvas, 20, smallCanvas, c, w, h, canvasNumber);
-// }
-
 function createVideo(vidSrc, vidId) {
-        var video = document.createElement("video");
-        video.id = vidId;
-        video.style = "display: none";
-        video.autoplay = true;
-        video.loop = true;
-        video.muted = true;
+    var video = document.createElement("video");
+    video.id = vidId;
+    video.style = "display: none";
+    video.autoplay = true;
+    video.loop = true;
+    video.muted = true;
 
-        // add the video sources
-        var source1 = document.createElement("source");
-        source1.src = vidSrc + ".mp4";
-        source1.type = "video/mp4";
-        video.appendChild(source1)
+    // add the video sources
+    var source1 = document.createElement("source");
+    source1.src = vidSrc + ".mp4";
+    source1.type = "video/mp4";
+    video.appendChild(source1);
 
-        var source2 = document.createElement("source");
-        source2.src = vidSrc + ".webm";
-        source2.type = "video/webm";
-        video.appendChild(source2)
-        document.getElementById("streams").appendChild(video);
+    var source2 = document.createElement("source");
+    source2.src = vidSrc + ".webm";
+    source2.type = "video/webm";
+    video.appendChild(source2);
+    document.getElementById("streams").appendChild(video);
 }
 
 function draw(c, w, h) {

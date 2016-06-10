@@ -25,6 +25,7 @@ var peers = {};
 // state variable used to determine if this client has received
 window.hasStateInfo = false;
 window.localId = "";
+window.interactivosRoom = "interactivoszia"
 
 // structure of state info object:
 // peers: list of peers, each peer has an id and a nick as following:
@@ -39,7 +40,7 @@ function start() {
     toolbar = document.createElement('div');
     toolbar.className = "toolbar";
     if(room) {
-        if (room === "interactivos") {
+        if (room === window.interactivosRoom) {
             // remove the creation dialogue
             document.body.removeChild(document.getElementById("createRoom"));
 
@@ -48,6 +49,7 @@ function start() {
             vid.style = "display: none";
             vid.id = "video_local";
             document.body.appendChild(vid);
+            stateInfo.peers.push({peer: "local", id: vid.id, video: vid});
 
             // create the canvas element that will contain & display all of the streams
             var canvas = document.createElement("canvas");
@@ -62,9 +64,21 @@ function start() {
             // create the video element that will house the recorded footage
             var recordedVid = document.createElement("video");
             recordedVid.style = "display: none";
-            recordedVid.id = "video_recorded";
+            recordedVid.id = "video-recorded";
             recordedVid.autoplay = true;
+            recordedVid.loop = true;
             recordedVid.muted = true; // doesn't appear to be set in the DOM, wtf
+
+            var source1 = document.createElement("source");
+            source1.src = "http://clips.vorwaerts-gmbh.de/big_buck_bunny.mp4"
+            source1.type = "video/mp4";
+            recordedVid.appendChild(source1);
+
+            var source2 = document.createElement("source");
+            source2.src = "http://clips.vorwaerts-gmbh.de/big_buck_bunny.webm"
+            source2.type = "video/webm";
+            recordedVid.appendChild(source2);
+
             document.body.appendChild(recordedVid);
             
             // initate everything
@@ -95,7 +109,7 @@ function start() {
 }
 
 function initWebRTCInteractivosExhibit() {
-    var numberOfParticipants = 1;
+    stateInfo.numberOfParticipants = 1;
 
     var canvas = document.getElementById('canvas');
     var context = canvas.getContext('2d');
@@ -105,20 +119,25 @@ function initWebRTCInteractivosExhibit() {
     canvas.width = cw;
     canvas.height = ch;
 
-    // draw(context, cw, ch);
-    function createStreamVideo(vidSrc, vidId) {
+    function createStreamVideo(vidSrc) {
+        var streams = document.getElementById("streams");
+        streams.appendChild(vidSrc); 
     }
 
     function draw(c, w, h) {
         // draw the smaller streams, sharing the top half of the screen
-        for (var i = 0; i < numberOfParticipants; i++) { 
-            var v = document.getElementById("stream-" + i );
-            c.drawImage(v, w * i / randomNumberOfParticipants, 0, w/numberOfParticipants, h/2);
+        for (var i = 0; i < stateInfo.peers.length; i++) { 
+            var v = stateInfo.peers[i].video;
+            if (v) {
+                c.drawImage(v, w * i / stateInfo.numberOfParticipants, 0, w / stateInfo.numberOfParticipants, h / 2);
+            }
         }
+
         // draw the large video stream
         // in the bottom half of the screen
         // NOTE: currently has a visual bug, with a border separating the two
         // portions of the canvas - dunno what is the cause
+        //
         v = document.getElementById("video-recorded");
         c.drawImage(v, 0, h/2, w, h/2);
         setTimeout(draw, 20, c, w, h);
@@ -187,6 +206,7 @@ function initWebRTCInteractivosExhibit() {
     webrtc.on('readyToCall', function () {
         window.localId = webrtc.connection.connection.id;
         if (room) webrtc.joinRoom(room);
+        setTimeout(function() {draw(context, cw, ch)}, 1500);
     });
 
     webrtc.on('localScreenAdded', function (el) {
@@ -204,7 +224,7 @@ function initWebRTCInteractivosExhibit() {
 
     webrtc.on('channelMessage', function (peer, label, data) {
         console.log("channelMessage", label, data.type);
-        if (data.type === "sessionInfo"){
+        if (data.type === "interactivosState"){
             // one of the peers changed the name of their window
             if (label === "shareState" && !window.hasStateInfo) {
                 // update the state of this client to reflect the state of the room
@@ -221,15 +241,23 @@ function initWebRTCInteractivosExhibit() {
     });
 
      webrtc.on('videoAdded', function (video, peer) {
+         console.log("VIDEO ADDED!");
          // TODO: check to make sure that the peer added wasn't the recorded video stream
-         numberOfParticipants++;
-         console.log("video added");
+         stateInfo.numberOfParticipants++;
+         video.style = "display: none";
+         video.id = "stream-" + stateInfo.numberOfParticipants;
+         createStreamVideo(video);
+         stateInfo.peers.push({peer: peer, id: peer.id, video: video});
+
+         setTimeout(function() {
+             // webrtc.sendDirectlyToAll("shareState", "interactivosState", 15);
+         }, 3500);
      });
 
     var self = this;
     webrtc.on('videoRemoved', function (video, peer) {
          // TODO: check to make sure that the peer remove wasn't the video footage
-        numberOfParticipants--;
+        stateInfo.numberOfParticipants--;
         console.log("video removed");
         // update id of all video elements: decrement by one if their id was
         // larger than that of the id that just left, otherwise leave the id
@@ -354,7 +382,6 @@ function initWebRTC(){
     });
 
      webrtc.on('videoAdded', function (video, peer) {
-         console.log("VIDEO ADDED");
          /*add new peer to peer object*/
          var newPeer = new PeerMediaContainer(peer.id, video, webrtc, dashboard);
          peers[peer.id] = {peer: peer, peerContainer: newPeer, dataStreams: {}};

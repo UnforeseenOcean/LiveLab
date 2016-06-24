@@ -18,6 +18,18 @@ Currently being developed as part of [Interactivos?'16 Possible Worlds. Creative
 4. in another window do `npm run watch-js` (this is so the javascript code is automatically pushed & updated)
 5. open a third and final window and do `gulp` (and this allows us to change the less/css without having to restart the node application to reflect the changes) 
 
+####To Export with Electron
+LiveLab requires the socket.io-client module, but you'll notice it's missing from the dependencies. There seems to be a bug in the ws module depended by socket.io-client that gives an 'invalid utf8 sequence' error when installed with node v6.2.2. Thankfully it works fine when installed with v4.4.5. To account for this a few extra steps are provided.
+
+1. Clone git repository
+2. use nvm to install both node v4.4.5 and v6.2.2 ([nvm on GitHub](https://github.com/creationix/nvm))
+3. update npm for both node versions
+4. use v6.2.2 to install <code>nvm use 6.2.2</code> <code>npm install</code>
+5. use v4.4.5 to install and save socket.io-client <code>nvm use 4.4.5</code> <code>npm i socket.io-client --save</code>
+6. use v6.2.2 to package app <code>nvm use 6.2.2</code> <code>npm run-script package</code>
+
+To build apps for other systems review the [docs for electron-packager](https://www.npmjs.com/package/electron-packager)
+
 ###Developed by:
 Jesse Ricke ([CultureHub](http://www.culturehub.org/))
 

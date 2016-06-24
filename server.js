@@ -16,11 +16,11 @@ var static = require('node-static');
 var ports = {};
 
 var options = {
-  key: fs.readFileSync('key.pem'),
-  cert: fs.readFileSync('cert.pem')
+  key:  fs.readFileSync(__dirname + '/key.pem'),
+  cert: fs.readFileSync(__dirname + '/cert.pem'),
 };
 
-var file = new static.Server('./public');
+var file = new static.Server(__dirname + '/public');
 
 var udp_client = dgram.createSocket('udp4', function(msg, rinfo) {});
 
@@ -61,7 +61,7 @@ var getIPAddresses = function () {
 
 // test cleanup.js
 // loads module and registers app specific cleanup callback...
-var cleanup = require('./cleanup').Cleanup(myCleanup);
+var cleanup = require(__dirname + '/cleanup').Cleanup(myCleanup);
 //var cleanup = require('./cleanup').Cleanup(); // will call noOp
 
 
@@ -110,8 +110,8 @@ wss.on("connection", function (ws) {
             }
         } else if(message.type=="subscribeStream"){
             //create osc client at specified port
-             console.log("received data ");
-             console.log(message.payload);
+           // console.log("received data ");
+          //  console.log(message.payload);
            // console.log(message.payload);
             var msg = oscMin.toBuffer(message.payload);
           //  console.log(msg);

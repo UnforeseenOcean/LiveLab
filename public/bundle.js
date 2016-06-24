@@ -774,18 +774,21 @@ SessionControl.prototype.oscParameter = function(data){
 SessionControl.prototype.createControlUI = function(container){
 	var sessionDiv = document.createElement('div');
 	sessionDiv.id = "sessionControl";
-    sessionDiv.className = "toolbar-element hide";
+  sessionDiv.className = "toolbar-element hide";
 
+     var vidSrc = this.video.src;
+     var showWindow;
+     var globalThis = this;
      var showWinButton = createButton("window", function () {
           showWindow = window.open("https://" + ip + "/show.html", 'Show', 'popup');
           showWindow.onload = function () {
-              showWindow.document.getElementById('showVideo').src = this.video.src;
-          }.bind(this);
-          this.showWindow = showWindow;
+            var showVid = showWindow.document.getElementById('showVideo');
+            showVid.src = vidSrc;
+          }.bind(globalThis);
+          globalThis.showWindow = showWindow;
     });
     sessionDiv.appendChild(showWinButton);
 
-    var showWindow;
     var ip = window.location.host + window.location.pathname;
 
     var showFull = document.createElement('div');
@@ -864,9 +867,11 @@ function createButton(title, cb) {
 }
 
 SessionControl.prototype.setVideo = function(video){
-    console.log("show window");
     if(this.hasOwnProperty("showWindow")){
+      console.log("show window ");
         this.showWindow.document.getElementById('showVideo').src = video.src;
+    }else {
+      console.log("no show window ");
     }
 }
 
@@ -1990,7 +1995,6 @@ function initWebRTC(){
         addToolbarButton("Chat", chatWindow);
         addToolbarButton("Session Control", sessionControl);
         localMedia.video.addEventListener("click", function(e){
-            console.log("setting video ", e.target);
             sessionControl.setVideo(e.target);
         });
     });

@@ -5,7 +5,7 @@
 //--------------------------------------------------
 */
 //var osc = require("osc"),
-   var WebSocket = require("ws")
+var WebSocket = require("ws")
     oscMin = require("osc-min");
 var https = require('https');
 var fs = require('fs');

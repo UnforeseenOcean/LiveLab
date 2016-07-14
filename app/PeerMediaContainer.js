@@ -1,4 +1,5 @@
 var util = require("./util.js");
+var attachMediaStream = require('attachmediastream');
  /* peers[peer.id] = {peer: peer, video: video, dataStreams: {}};
         var newPeer = new PeerMediaContainer(peers[peer.id], webrtc, dashboard);*/
 
@@ -24,6 +25,14 @@ function PeerMediaContainer(id, video, webrtc, dashboard, nick) {
 	 
     this.createAudioSelector();
 	this.createVolumeControl();
+   this.webrtc.on('additionalStream', function (stream) {
+        console.log("ADDITIONAL STREAM IN CONTAINER");
+        console.log(stream);
+          var video = attachMediaStream(stream);
+
+    // store video element as part of peer for easy removal
+        this.videoDiv.appendChild(video);
+    }.bind(this));
 }
 
 PeerMediaContainer.prototype.createAccordion = function(name){

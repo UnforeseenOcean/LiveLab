@@ -144,6 +144,15 @@ PeerMediaContainer.prototype.addVideoControls = function(){
 		console.log(this.video);
 		this.video.volume = 0.0;
 		this.createPeerWindow();
+
+    /* testing add stream */
+    var addStreamButton = document.createElement('input');
+    addStreamButton.type = 'button';
+    addStreamButton.value = 'add stream';
+    addStreamButton.onclick = function(){
+      this.webrtc.addStream();
+    }.bind(this);
+    this.videoDiv.appendChild(addStreamButton);
 	}
 };
 

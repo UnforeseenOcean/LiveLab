@@ -2,7 +2,7 @@ var util = require('util');
 var webrtc = require('webrtcsupport');
 var WildEmitter = require('wildemitter');
 var mockconsole = require('mockconsole');
-var localMedia = require('localmedia');
+var localMedia = require('./LiveLabLocalMedia');
 var Peer = require('./peer');
 
 

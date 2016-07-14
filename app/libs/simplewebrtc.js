@@ -146,6 +146,11 @@ function SimpleWebRTC(opts) {
         self.testReadiness();
     });
 
+    this.webrtc.on('additionalStream', function () {
+        console.log("ADDITIONAL STREAM");
+        console.log(this);
+    });
+
     this.webrtc.on('message', function (payload) {
         self.connection.emit('message', payload);
     });
@@ -268,6 +273,10 @@ SimpleWebRTC.prototype.leaveRoom = function () {
         this.roomName = undefined;
     }
 };
+
+SimpleWebRTC.prototype.addStream = function() {
+    this.webrtc.addStream();
+}
 
 SimpleWebRTC.prototype.disconnect = function () {
     this.connection.disconnect();

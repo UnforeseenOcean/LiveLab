@@ -4,8 +4,8 @@
 //  ToDO: switch to using simpler OSC library following example: https://github.com/toddtreece/osc-examples/blob/master/socketio.js
 //--------------------------------------------------
 */
-var osc = require("osc"),
-    WebSocket = require("ws")
+//var osc = require("osc"),
+   var WebSocket = require("ws")
     oscMin = require("osc-min");
 var https = require('https');
 var fs = require('fs');

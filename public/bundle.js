@@ -524,23 +524,24 @@ var util = require("./util.js");
 // additional elements like volume controls 
 // Instantiated upon joining a WebRTC room, or a new peer connecting
 function PeerMediaContainer(id, video, webrtc, dashboard, nick) {
-	this.id = id;
+    this.id = id;
     this.nick = nick || id;
     this.webrtc = webrtc;
-	this.createAccordion(this.nick);
-	this.dashboard = dashboard;
-	dashboard.appendChild(this.mediaContainer);
-	this.videoDiv.parentElement.className = "accordion-section open";
-	if (id!="local") {
-		this.videoDiv.appendChild(video);
-		this.video = video;
-	    video.id = 'video_' + id;
-	    video.volume = 0.0;
-	    this.createPeerWindow();
-	 }
-	 
+    this.createAccordion(this.nick);
+    this.dashboard = dashboard;
+    dashboard.appendChild(this.mediaContainer);
+    this.videoDiv.parentElement.className = "accordion-section open";
+    if (id!="local") {
+        this.videoDiv.appendChild(video);
+        this.video = video;
+    video.id = 'video_' + id;
+    video.volume = 0.0;
+    this.createPeerWindow();
+    this.audio = new Audio();
+    this.audio.volume = 0.0;
     this.createAudioSelector();
-	this.createVolumeControl();
+    this.createVolumeControl();
+    }
 }
 
 PeerMediaContainer.prototype.createAccordion = function(name){
@@ -595,37 +596,51 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
     //show available audio output devices
      navigator.mediaDevices.enumerateDevices()
     .then(function(deviceInfos){
-    	//var masterOutputSelector = document.createElement('select');
-    	var audioOut = document.createElement('div');
-    	audioOut.className = 'outputSelector';
-   		audioOut.id = 'audioOut_' + this.id;
-    	var audioOutLabel = document.createElement('label');
-	    audioOutLabel.innerHTML = 'Select peer audio output: ';
-	    audioOut.appendChild(audioOutLabel);
-	    var audioOutSelector = document.createElement('select');
-	    this.audioDiv.appendChild(audioOut);
-	    audioOut.appendChild(audioOutSelector);
-  		for (var i = 0; i !== deviceInfos.length; ++i) {
-    		var deviceInfo = deviceInfos[i];
-    		var option = document.createElement('option');
-   			option.value = deviceInfo.deviceId;
-   			if (deviceInfo.kind === 'audiooutput') {
-	      		console.info('Found audio output device: ', deviceInfo);
-	      		option.text = deviceInfo.label || 'speaker ' +
-	          	(audioOutSelector.length + 1);
-	          	//option.value = deviceInfo.label;
-	      		//masterOutputSelector.appendChild(option);
-	      		audioOutSelector.appendChild(option);
-    		} else {
-      			console.log('Found non audio output device: ', deviceInfo.label);
-    		}
-  		}
-  		audioOutSelector.addEventListener('change', function(e){
-  			console.log(e.target.value);
-  			console.log(this.video);
-  			attachSinkId(this.video, e.target.value, audioOutSelector);
-  		}.bind(this));
-  		this.audioDiv.appendChild(audioOut);
+
+        //var masterOutputSelector = document.createElement('select');
+        var audioOut = document.createElement('div');
+        audioOut.className = 'outputSelector';
+        audioOut.id = 'audioOut_' + this.id;
+        var audioOutLabel = document.createElement('label');
+        audioOutLabel.innerHTML = 'Select peer audio output: ';
+        audioOut.appendChild(audioOutLabel);
+        var audioOutSelector = document.createElement('select');
+        this.audioDiv.appendChild(audioOut);
+        audioOut.appendChild(audioOutSelector);
+
+        // WebAudio portion for audio routing
+        var context = new AudioContext(),
+        waIn = context.createMediaStreamSource(this.video.srcObject),
+        waOut = context.createMediaStreamDestination();
+        waIn.connect(waOut);
+        this.audio.src = URL.createObjectURL(waOut.stream);
+        audioOut.appendChild(this.audio);
+        this.audio.play();
+
+        for (var i = 0; i !== deviceInfos.length; ++i) {
+            var deviceInfo = deviceInfos[i];
+            var option = document.createElement('option');
+            option.value = deviceInfo.deviceId;
+            if (deviceInfo.kind === 'audiooutput') {
+                console.info('Found audio output device: ', deviceInfo);
+                option.text = deviceInfo.label || 'speaker ' +
+                (audioOutSelector.length + 1);
+                //option.value = deviceInfo.label;
+                //masterOutputSelector.appendChild(option);
+                audioOutSelector.appendChild(option);
+            } else {
+                console.log('Found non audio output device: ', deviceInfo.label);
+            }
+        }
+        audioOutSelector.addEventListener('change', function(e){
+            console.log(e.target.value);
+            console.log(this.audio);
+
+        // Sink attached to audio tag fed by WebAudio context
+            attachSinkId(this.audio, e.target.value, audioOutSelector);
+
+        }.bind(this));
+        this.audioDiv.appendChild(audioOut);
 
     }.bind(this), successCallback)
     .catch(errorCallback);
@@ -634,7 +649,7 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
 }
 
 PeerMediaContainer.prototype.createVolumeControl = function() {
-	 // volume control
+     // volume control
     var volCntl = document.createElement('div');
     volCntl.className = 'volumeSlide';
     volCntl.id = 'volCntl_' + this.id;
@@ -648,7 +663,7 @@ PeerMediaContainer.prototype.createVolumeControl = function() {
     volController.value = "0.0";
     volController.step = "0.01";
     volController.oninput = function() {
-      this.video.volume = volController.value;
+      this.audio.volume = volController.value;
     }.bind(this);
     volCntl.appendChild(volController);
     this.audioDiv.appendChild(volCntl);
@@ -656,12 +671,16 @@ PeerMediaContainer.prototype.createVolumeControl = function() {
 }
 /* for local stream only; create video controls once video has been added */
 PeerMediaContainer.prototype.addVideoControls = function(){
-	if (!('video' in this)){
-		this.video = this.videoDiv.getElementsByTagName('video')[0];
-		console.log(this.video);
-		this.video.volume = 0.0;
-		this.createPeerWindow();
-	}
+    if (!('video' in this)){
+        this.video = this.videoDiv.getElementsByTagName('video')[0];
+        console.log(this.video);
+        this.video.volume = 0.0;
+        this.audio = new Audio();
+        this.audio.volume = 0.0;
+        this.createPeerWindow();
+        this.createAudioSelector();
+        this.createVolumeControl();
+    }
 };
 
 PeerMediaContainer.prototype.destroy = function(){
@@ -2036,16 +2055,16 @@ function initWebRTC(){
         delete peers["localScreenShare"];
     });
 
-    webrtc.on('localScreenAdded', function (el) {
-        console.log(el);
-         var newPeer = new PeerMediaContainer("your screen", el, webrtc, dashboard);
-        peers["localScreenShare"] = newPeer;
-    });
+    // webrtc.on('localScreenAdded', function (el) {
+    //     console.log(el);
+    //      var newPeer = new PeerMediaContainer("your screen", el, webrtc, dashboard);
+    //     peers["localScreenShare"] = newPeer;
+    // });
 
-    webrtc.on("localScreenStopped", function (stream) {
-        peers["localScreenShare"].destroy();
-        delete peers["localScreenShare"];
-    });
+    // webrtc.on("localScreenStopped", function (stream) {
+    //     peers["localScreenShare"].destroy();
+    //     delete peers["localScreenShare"];
+    // });
 
     webrtc.on('channelMessage', function (peer, label, data) {
         if (data.type=="chat") {

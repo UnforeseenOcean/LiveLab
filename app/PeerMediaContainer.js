@@ -17,13 +17,14 @@ function PeerMediaContainer(id, video, webrtc, dashboard, nick) {
 	if (id!="local") {
 		this.videoDiv.appendChild(video);
 		this.video = video;
-	    video.id = 'video_' + id;
-	    video.volume = 0.0;
-	    this.createPeerWindow();
-	 }
-	 
+    video.id = 'video_' + id;
+    video.volume = 0.0;
+    this.createPeerWindow();
+    this.audio = new Audio();
+    this.audio.volume = 0.0;
     this.createAudioSelector();
-	this.createVolumeControl();
+    this.createVolumeControl();
+	}
 }
 
 PeerMediaContainer.prototype.createAccordion = function(name){
@@ -78,6 +79,7 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
     //show available audio output devices
      navigator.mediaDevices.enumerateDevices()
     .then(function(deviceInfos){
+
     	//var masterOutputSelector = document.createElement('select');
     	var audioOut = document.createElement('div');
     	audioOut.className = 'outputSelector';
@@ -88,6 +90,16 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
 	    var audioOutSelector = document.createElement('select');
 	    this.audioDiv.appendChild(audioOut);
 	    audioOut.appendChild(audioOutSelector);
+
+      // WebAudio portion for audio routing
+      var context = new AudioContext(),
+      waIn = context.createMediaStreamSource(this.video.srcObject),
+      waOut = context.createMediaStreamDestination();
+      waIn.connect(waOut);
+      this.audio.src = URL.createObjectURL(waOut.stream);
+      audioOut.appendChild(this.audio);
+      this.audio.play();
+
   		for (var i = 0; i !== deviceInfos.length; ++i) {
     		var deviceInfo = deviceInfos[i];
     		var option = document.createElement('option');
@@ -105,8 +117,8 @@ PeerMediaContainer.prototype.createAudioSelector = function(){
   		}
   		audioOutSelector.addEventListener('change', function(e){
   			console.log(e.target.value);
-  			console.log(this.video);
-  			attachSinkId(this.video, e.target.value, audioOutSelector);
+  			console.log(this.audio);
+  			attachSinkId(this.audio, e.target.value, audioOutSelector);
   		}.bind(this));
   		this.audioDiv.appendChild(audioOut);
 
@@ -131,7 +143,7 @@ PeerMediaContainer.prototype.createVolumeControl = function() {
     volController.value = "0.0";
     volController.step = "0.01";
     volController.oninput = function() {
-      this.video.volume = volController.value;
+      this.audio.volume = volController.value;
     }.bind(this);
     volCntl.appendChild(volController);
     this.audioDiv.appendChild(volCntl);
@@ -143,7 +155,11 @@ PeerMediaContainer.prototype.addVideoControls = function(){
 		this.video = this.videoDiv.getElementsByTagName('video')[0];
 		console.log(this.video);
 		this.video.volume = 0.0;
+    this.audio = new Audio();
+    this.audio.volume = 0.0;
 		this.createPeerWindow();
+    this.createAudioSelector();
+    this.createVolumeControl();
 	}
 };
 

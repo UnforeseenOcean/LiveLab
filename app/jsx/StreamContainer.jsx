@@ -29,7 +29,8 @@ module.exports = React.createClass({
 	// 	 console.log(videoEl);
 	},
 	render: function(){
-		
+		var tracks = this.props.stream.getTracks();
+		console.log(tracks);
 		return <video autoPlay controls muted="true" id="vid" ref="vid" src={window.URL.createObjectURL(this.props.stream)} />
 	}
 });

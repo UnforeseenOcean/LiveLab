@@ -1,17 +1,16 @@
 var React = require('react');
-var VideoContainer = require('./VideoContainer.jsx');
+var StreamContainer = require('./StreamContainer.jsx');
 
 module.exports = React.createClass({
 	render: function(){
-		var localVids = this.props.sessionState.localStreams.map(function(stream, index){
-			return <VideoContainer stream={stream} mute={true} key={index}/>
-		});
-		console.log("PEERS ", this.props.sessionState.peers);
-		var remoteVids = this.props.sessionState.peers.map(function(peer, index){
-			return <VideoContainer stream={peer.stream} mute={false} key={"peer_"+index}/>
-		});
+		var localVids = this.props.s.localStreams.map(function(stream, index){
+			return <StreamContainer stream={stream} mute={true} key={index} dimensions={this.props.s.dimensions}/>
+		}.bind(this));
+		console.log("PEERS ", this.props.s.peers);
+		var remoteVids = this.props.s.peers.map(function(peer, index){
+			return <StreamContainer stream={peer.stream} mute={false} key={"peer_"+index} dimensions={this.props.s.dimensions}/>
+		}.bind(this));
 		return <div>
-			{this.props.sessionState.room}
 			{localVids}
 			{remoteVids}
 			</div>;

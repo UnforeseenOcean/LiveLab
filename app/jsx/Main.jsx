@@ -7,7 +7,7 @@ var LiveLab = require('./LiveLabSimple.js');
 module.exports = React.createClass({
 	/*set room variables from config.json*/
 	getInitialState: function(){
-		return {room: configData.room, localStreams: [], peers:[]}
+		return {room: configData.room, localStreams: [], peers:[], dimensions: {w: 1280, h:720}};
 	},
 	/*check for room name in URL, and join room if not null*/
 	componentDidMount: function(){
@@ -17,6 +17,9 @@ module.exports = React.createClass({
 			//liveLab.joinRoom(room);
 			this.setState({room: room});
 		}
+		window.onresize = function(){
+			this.setState({dimensions: {w: window.innerWidth, h: window.innerHeight}});
+		}.bind(this);
 	}, 
 	updateSessionParams: function(update){
 		this.setState({update});
@@ -35,7 +38,7 @@ module.exports = React.createClass({
 		if(this.state.room == null){
 			return <Landing />;
 		} else {
-			return <ControlPanel sessionState={this.state}/>;
+			return <ControlPanel s={this.state}/>;
 		}
 		
 	}

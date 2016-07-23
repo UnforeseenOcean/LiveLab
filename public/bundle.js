@@ -2,30 +2,29 @@
 'use strict';
 
 var React = require('react');
-var VideoContainer = require('./VideoContainer.jsx');
+var StreamContainer = require('./StreamContainer.jsx');
 
 module.exports = React.createClass({
 	displayName: 'exports',
 
 	render: function render() {
-		var localVids = this.props.sessionState.localStreams.map(function (stream, index) {
-			return React.createElement(VideoContainer, { stream: stream, mute: true, key: index });
-		});
-		console.log("PEERS ", this.props.sessionState.peers);
-		var remoteVids = this.props.sessionState.peers.map(function (peer, index) {
-			return React.createElement(VideoContainer, { stream: peer.stream, mute: false, key: "peer_" + index });
-		});
+		var localVids = this.props.s.localStreams.map(function (stream, index) {
+			return React.createElement(StreamContainer, { stream: stream, mute: true, key: index, dimensions: this.props.s.dimensions });
+		}.bind(this));
+		console.log("PEERS ", this.props.s.peers);
+		var remoteVids = this.props.s.peers.map(function (peer, index) {
+			return React.createElement(StreamContainer, { stream: peer.stream, mute: false, key: "peer_" + index, dimensions: this.props.s.dimensions });
+		}.bind(this));
 		return React.createElement(
 			'div',
 			null,
-			this.props.sessionState.room,
 			localVids,
 			remoteVids
 		);
 	}
 });
 
-},{"./VideoContainer.jsx":6,"react":212}],2:[function(require,module,exports){
+},{"./StreamContainer.jsx":6,"react":212}],2:[function(require,module,exports){
 "use strict";
 
 var React = require('react');
@@ -63,7 +62,7 @@ var attachMediaStream = require('attachmediastream');
 var mockconsole = require('mockconsole');
 var SocketIoConnection = require('./../libs/socketioconnection');
 
-function SimpleWebRTC(opts) {
+function LiveLabRTC(opts) {
     var self = this;
     var options = opts || {};
     var config = this.config = {
@@ -71,8 +70,6 @@ function SimpleWebRTC(opts) {
         socketio: {/* 'force new connection':true*/},
         connection: null,
         debug: false,
-        localVideoEl: '',
-        remoteVideosEl: '',
         enableDataChannels: true,
         autoRequestMedia: false,
         autoRemoveVideos: true,
@@ -195,7 +192,7 @@ function SimpleWebRTC(opts) {
 
     // log all events in debug mode
     if (config.debug) {
-        this.on('*', this.logger.log.bind(this.logger, 'SimpleWebRTC event:'));
+        this.on('*', this.logger.log.bind(this.logger, 'LiveLabRTC event:'));
     }
 
     // check for readiness
@@ -311,13 +308,13 @@ function SimpleWebRTC(opts) {
     if (this.config.autoRequestMedia) this.startLocalVideo();
 }
 
-SimpleWebRTC.prototype = Object.create(WildEmitter.prototype, {
+LiveLabRTC.prototype = Object.create(WildEmitter.prototype, {
     constructor: {
-        value: SimpleWebRTC
+        value: LiveLabRTC
     }
 });
 
-SimpleWebRTC.prototype.leaveRoom = function () {
+LiveLabRTC.prototype.leaveRoom = function () {
     if (this.roomName) {
         this.connection.emit('leave');
         while (this.webrtc.peers.length) {
@@ -331,16 +328,16 @@ SimpleWebRTC.prototype.leaveRoom = function () {
     }
 };
 
-SimpleWebRTC.prototype.addStream = function () {
+LiveLabRTC.prototype.addStream = function () {
     this.webrtc.addStream();
 };
 
-SimpleWebRTC.prototype.disconnect = function () {
+LiveLabRTC.prototype.disconnect = function () {
     this.connection.disconnect();
     delete this.connection;
 };
 
-SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
+LiveLabRTC.prototype.handlePeerStreamAdded = function (peer) {
     var self = this;
     // var container = this.getRemoteVideoContainer();
     // var video = attachMediaStream(peer.stream);
@@ -367,7 +364,7 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
     }, 250);
 };
 
-SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
+LiveLabRTC.prototype.handlePeerStreamRemoved = function (peer) {
     var container = this.getRemoteVideoContainer();
     var videoEl = peer.videoEl;
     if (this.config.autoRemoveVideos && container && videoEl) {
@@ -376,18 +373,18 @@ SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
     if (videoEl) this.emit('videoRemoved', videoEl, peer);
 };
 
-SimpleWebRTC.prototype.getDomId = function (peer) {
+LiveLabRTC.prototype.getDomId = function (peer) {
     return [peer.id, peer.type, peer.broadcaster ? 'broadcasting' : 'incoming'].join('_');
 };
 
 // set volume on video tag for all peers takse a value between 0 and 1
-SimpleWebRTC.prototype.setVolumeForAll = function (volume) {
+LiveLabRTC.prototype.setVolumeForAll = function (volume) {
     this.webrtc.peers.forEach(function (peer) {
         if (peer.videoEl) peer.videoEl.volume = volume;
     });
 };
 
-SimpleWebRTC.prototype.joinRoom = function (name, cb) {
+LiveLabRTC.prototype.joinRoom = function (name, cb) {
     var self = this;
     this.roomName = name;
     this.connection.emit('join', name, function (err, roomDescription) {
@@ -434,7 +431,7 @@ SimpleWebRTC.prototype.joinRoom = function (name, cb) {
     });
 };
 
-SimpleWebRTC.prototype.getEl = function (idOrEl) {
+LiveLabRTC.prototype.getEl = function (idOrEl) {
     if (typeof idOrEl === 'string') {
         return document.getElementById(idOrEl);
     } else {
@@ -442,7 +439,7 @@ SimpleWebRTC.prototype.getEl = function (idOrEl) {
     }
 };
 
-SimpleWebRTC.prototype.startLocalVideo = function () {
+LiveLabRTC.prototype.startLocalVideo = function () {
     var self = this;
     this.webrtc.startLocalMedia(this.config.media, function (err, stream) {
         if (err) {
@@ -453,14 +450,14 @@ SimpleWebRTC.prototype.startLocalVideo = function () {
     });
 };
 
-SimpleWebRTC.prototype.stopLocalVideo = function () {
+LiveLabRTC.prototype.stopLocalVideo = function () {
     this.webrtc.stopLocalMedia();
 };
 
 // this accepts either element ID or element
 // and either the video tag itself or a container
 // that will be used to put the video tag into.
-/*SimpleWebRTC.prototype.getLocalVideoContainer = function () {
+/*LiveLabRTC.prototype.getLocalVideoContainer = function () {
     var el = this.getEl(this.config.localVideoEl);
     if (el && el.tagName === 'VIDEO') {
         el.oncontextmenu = function () { return false; };
@@ -475,19 +472,19 @@ SimpleWebRTC.prototype.stopLocalVideo = function () {
     }
 };*/
 
-/*SimpleWebRTC.prototype.getRemoteVideoContainer = function () {
+/*LiveLabRTC.prototype.getRemoteVideoContainer = function () {
     return this.getEl(this.config.remoteVideosEl);
 };*/
 
-SimpleWebRTC.prototype.shareScreen = function (cb) {
+LiveLabRTC.prototype.shareScreen = function (cb) {
     this.webrtc.startScreenShare(cb);
 };
 
-SimpleWebRTC.prototype.getLocalScreen = function () {
+LiveLabRTC.prototype.getLocalScreen = function () {
     return this.webrtc.localScreen;
 };
 
-SimpleWebRTC.prototype.stopScreenShare = function () {
+LiveLabRTC.prototype.stopScreenShare = function () {
     this.connection.emit('unshareScreen');
     var videoEl = document.getElementById('localScreen');
     var container = this.getRemoteVideoContainer();
@@ -513,7 +510,7 @@ SimpleWebRTC.prototype.stopScreenShare = function () {
     //delete this.webrtc.localScreen;
 };
 
-SimpleWebRTC.prototype.testReadiness = function () {
+LiveLabRTC.prototype.testReadiness = function () {
     var self = this;
     if (this.sessionReady) {
         if (!this.config.media.video && !this.config.media.audio) {
@@ -524,7 +521,7 @@ SimpleWebRTC.prototype.testReadiness = function () {
     }
 };
 
-SimpleWebRTC.prototype.createRoom = function (name, cb) {
+LiveLabRTC.prototype.createRoom = function (name, cb) {
     this.roomName = name;
     if (arguments.length === 2) {
         this.connection.emit('create', name, cb);
@@ -533,13 +530,13 @@ SimpleWebRTC.prototype.createRoom = function (name, cb) {
     }
 };
 
-SimpleWebRTC.prototype.sendFile = function () {
+LiveLabRTC.prototype.sendFile = function () {
     if (!webrtcSupport.dataChannel) {
         return this.emit('error', new Error('DataChannelNotSupported'));
     }
 };
 
-module.exports = SimpleWebRTC;
+module.exports = LiveLabRTC;
 
 },{"./../libs/socketioconnection":11,"./../libs/webrtc":12,"./../util":13,"attachmediastream":14,"mockconsole":68,"webrtcsupport":277,"wildemitter":278}],4:[function(require,module,exports){
 "use strict";
@@ -709,7 +706,7 @@ module.exports = React.createClass({
 
 	/*set room variables from config.json*/
 	getInitialState: function getInitialState() {
-		return { room: configData.room, localStreams: [], peers: [] };
+		return { room: configData.room, localStreams: [], peers: [], dimensions: { w: 1280, h: 720 } };
 	},
 	/*check for room name in URL, and join room if not null*/
 	componentDidMount: function componentDidMount() {
@@ -719,6 +716,9 @@ module.exports = React.createClass({
 			//liveLab.joinRoom(room);
 			this.setState({ room: room });
 		}
+		window.onresize = function () {
+			this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight } });
+		}.bind(this);
 	},
 	updateSessionParams: function updateSessionParams(update) {
 		this.setState({ update: update });
@@ -736,7 +736,7 @@ module.exports = React.createClass({
 		if (this.state.room == null) {
 			return React.createElement(Landing, null);
 		} else {
-			return React.createElement(ControlPanel, { sessionState: this.state });
+			return React.createElement(ControlPanel, { s: this.state });
 		}
 	}
 });
@@ -776,7 +776,8 @@ module.exports = React.createClass({
     // 	 console.log(videoEl);
   },
   render: function render() {
-
+    var tracks = this.props.stream.getTracks();
+    console.log(tracks);
     return React.createElement("video", { autoPlay: true, controls: true, muted: "true", id: "vid", ref: "vid", src: window.URL.createObjectURL(this.props.stream) });
   }
 });

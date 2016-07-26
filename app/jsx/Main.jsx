@@ -7,38 +7,36 @@ var LiveLab = require('./LiveLabSimple.js');
 module.exports = React.createClass({
 	/*set room variables from config.json*/
 	getInitialState: function(){
-		return {room: configData.room, localStreams: [], peers:[], dimensions: {w: 1280, h:720}};
+		return {room: configData.room, webrtc: null, dimensions: {w: 1280, h:720}};
 	},
 	/*check for room name in URL, and join room if not null*/
 	componentDidMount: function(){
 		var room = location.search && location.search.split('?')[1];
-		var liveLab = new LiveLab(configData, this);
+		this.liveLab = new LiveLab(configData, this);
 		if(room) {
 			//liveLab.joinRoom(room);
 			this.setState({room: room});
 		}
+		this.setState({dimensions: {w: window.innerWidth, h: window.innerHeight}, webrtc: this.liveLab.webrtc.webrtc});
 		window.onresize = function(){
 			this.setState({dimensions: {w: window.innerWidth, h: window.innerHeight}});
 		}.bind(this);
 	}, 
-	updateSessionParams: function(update){
-		this.setState({update});
-	},
-	addLocalStream: function(stream){
-		var localStreams = this.state.localStreams;
-		localStreams.push(stream);
-		console.log(localStreams);
-		this.setState({localStreams: localStreams});
-
+/*	updateLocalStreams: function(streams){
+		console.log(streams);
+		this.setState({localStreams: streams});
 	},
 	updatePeers: function(peers){
 		this.setState({peers:peers});
+	},*/
+	update: function(){
+		this.setState({webrtc: this.liveLab.webrtc.webrtc})
 	},
 	render: function(){
 		if(this.state.room == null){
 			return <Landing />;
 		} else {
-			return <ControlPanel s={this.state}/>;
+			return <ControlPanel s={this.state} liveLab ={this.liveLab}/>;
 		}
 		
 	}

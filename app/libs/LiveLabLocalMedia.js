@@ -56,8 +56,10 @@ LocalMedia.prototype.start = function (mediaConstraints, cb) {
             if (constraints.audio && self.config.detectSpeakingEvents) {
                 self.setupAudioMonitor(stream, self.config.harkOptions);
             }
-            self.localStreams.push(stream);
-
+          //  self.localStreams.push(stream);
+          var streamObj = {};
+          streamObj.stream = stream;
+          self.localStreams.push(streamObj);
             if (self.config.autoAdjustMic) {
                 self.gainController = new GainController(stream);
                 // start out somewhat muted if we can track audio

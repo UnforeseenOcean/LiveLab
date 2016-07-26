@@ -13,7 +13,7 @@ function LiveLabRTC(opts) {
             url: 'https://sandbox.simplewebrtc.com:443/',
             socketio: {/* 'force new connection':true*/},
             connection: null,
-            debug: false,
+            debug: true,
             enableDataChannels: true,
             autoRequestMedia: false,
             autoRemoveVideos: true,
@@ -181,19 +181,6 @@ function LiveLabRTC(opts) {
     });
 
 
-    // sending mute/unmute to all peers
-    this.webrtc.on('audioOn', function () {
-        self.webrtc.sendToAll('unmute', {name: 'audio'});
-    });
-    this.webrtc.on('audioOff', function () {
-        self.webrtc.sendToAll('mute', {name: 'audio'});
-    });
-    this.webrtc.on('videoOn', function () {
-        self.webrtc.sendToAll('unmute', {name: 'video'});
-    });
-    this.webrtc.on('videoOff', function () {
-        self.webrtc.sendToAll('mute', {name: 'video'});
-    });
 
     // screensharing events
     this.webrtc.on('localScreen', function (stream) {
@@ -298,42 +285,20 @@ LiveLabRTC.prototype.handlePeerStreamAdded = function (peer) {
     // currently called with a small delay because it arrives before
     // the video element is created otherwise (which happens after
     // the async setRemoteDescription-createAnswer)
-    window.setTimeout(function () {
-        if (!self.webrtc.isAudioEnabled()) {
-            peer.send('mute', {name: 'audio'});
-        }
-        if (!self.webrtc.isVideoEnabled()) {
-            peer.send('mute', {name: 'video'});
-        }
-    }, 250);
+   
 };
 
 LiveLabRTC.prototype.handlePeerStreamRemoved = function (peer) {
-    var container = this.getRemoteVideoContainer();
-    var videoEl = peer.videoEl;
-    if (this.config.autoRemoveVideos && container && videoEl) {
-        container.removeChild(videoEl);
-    }
-    if (videoEl) this.emit('videoRemoved', videoEl, peer);
+   this.emit('videoRemoved', peer);
 };
 
-LiveLabRTC.prototype.getDomId = function (peer) {
-    return [peer.id, peer.type, peer.broadcaster ? 'broadcasting' : 'incoming'].join('_');
-};
-
-// set volume on video tag for all peers takse a value between 0 and 1
-LiveLabRTC.prototype.setVolumeForAll = function (volume) {
-    this.webrtc.peers.forEach(function (peer) {
-        if (peer.videoEl) peer.videoEl.volume = volume;
-    });
-};
 
 LiveLabRTC.prototype.joinRoom = function (name, cb) {
     var self = this;
     this.roomName = name;
     this.connection.emit('join', name, function (err, roomDescription) {
         console.log('join CB', err, roomDescription);
-        var nick = localStorage.getItem("livelab-localNick");
+      /*  var nick = localStorage.getItem("livelab-localNick");
         // we don't have any nick saved in local storage - just use the
         // localId as nick
         if (nick === null) {
@@ -344,7 +309,7 @@ LiveLabRTC.prototype.joinRoom = function (name, cb) {
         window.hasStateInfo = (Object.keys(roomDescription.clients).length) === 0;
         if (window.hasStateInfo) {
             window.stateInfo.peers.push({id: window.localId, nick: nick});
-        }
+        }*/
 
         if (err) {
             self.emit('error', err);

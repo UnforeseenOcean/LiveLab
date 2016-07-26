@@ -72,7 +72,7 @@ function Peer(options) {
         }
     } else {
         this.parent.localStreams.forEach(function (stream) {
-            self.pc.addStream(stream);
+            self.pc.addStream(stream.stream);
         });
     }
 

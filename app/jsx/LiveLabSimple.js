@@ -1,4 +1,5 @@
 var LiveLabRTC = require('./LiveLabRTC.js'); 
+var StreamHandler = require('./StreamHandler.js');
 
 //eventually these settings should be in config
 var tempConfig = {localVideoEl: "video_local",
@@ -40,14 +41,18 @@ var tempConfig = {localVideoEl: "video_local",
 
 function LiveLabSimple(config, props){
     this.initLocalStorage();
+    this.initWebAudio();
     this.config = config;
     this.props = props;
     var webrtc = new LiveLabRTC(tempConfig);
+    this.webrtc = webrtc;
     webrtc.on('readyToCall', function () {
         console.log(webrtc);
         window.localId = webrtc.connection.connection.id;
         if (this.props.state.room) webrtc.joinRoom(this.props.state.room);
-        this.props.addLocalStream(webrtc.webrtc.localStreams[0]);
+         var streamHandler = new StreamHandler(webrtc.webrtc.localStreams[0], this.audioContext, this.updateRender, this);
+        //this.props.updateLocalStreams(webrtc.webrtc.localStreams);
+        this.updateRender();
     }.bind(this));
 
     webrtc.on('localScreenAdded', function (el) {
@@ -93,59 +98,26 @@ function LiveLabSimple(config, props){
 
      webrtc.on('videoAdded', function (peer) {
          console.log("VIDEO ADDED", webrtc);
-         this.props.updatePeers(webrtc.webrtc.peers);
-         /*add new peer to peer object*/
-         // var newPeer = new PeerMediaContainer(peer.id, video, webrtc, dashboard, peer.nick);
-         // peers[peer.id] = {peer: peer, peerContainer: newPeer, dataStreams: {}};
-         // newPeer.video.addEventListener("click", function(e){
-         //     console.log("setting video ", e.target);
-         //     sessionControl.setVideo(e.target);
-         // });
-
-         // if (window.hasStateInfo) {
-         //     // check to see if the new peer resides inside the peers list of
-         //     // the window.stateInfo object. if not: add it
-         //     var peerExists = false;
-         //     window.stateInfo.peers.forEach(function(existingPeer) {
-         //         if (peer.id === existingPeer.id) {
-         //             peerExists = true;
-         //             return;
-         //         }
-         //     });
-
-         //     if (!peerExists) {
-         //         window.stateInfo.peers.push({id: peer.id, nick: peer.nick});
-         //     }
-         //     // send the state information to everyone 
-         //     // TODO: preferably only send it to the connected peer
-         //     setTimeout(function() {
-         //         webrtc.sendDirectly(peer.id, "shareState", "sessionInfo", JSON.stringify(window.stateInfo));
-         //     }, 2500);
-         // } else {
-         //     // don't do shit
-         // }
-        // update the newly connected peer with the session info for this
-        // channel
-        // {collect session info somehow}
+         var streamHandler = new StreamHandler(peer, this.audioContext, this.updateRender, this);
+       //  this.props.updatePeers(webrtc.webrtc.peers);
+        this.updateRender();
      }.bind(this));
 
     var self = this;
-    webrtc.on('videoRemoved', function (video, peer) {
+    webrtc.on('videoRemoved', function (peer) {
          this.props.updatePeers(webrtc.webrtc.peers);
-        // var index = -1;
-        // for (var i = 0; i < window.stateInfo.peers.length; i++) {
-        //     var existingPeer = window.stateInfo.peers[i];
-        //     if (peer.id === existingPeer.id) {
-        //         index = i;
-        //         break;
-        //     }
-        // }
-        // // remove the peer from the stateInfo object
-        // window.stateInfo.peers.splice(index, 1);
-        // var peerObj = peers[peer.id];
-        // peerObj.peerContainer.destroy();
-        // delete peers[peer.id];
-    });
+    }.bind(this));
+}
+
+LiveLabSimple.prototype.updateRender = function(){
+  this.props.update(this.webrtc.webrtc);
+  //console.log(this);
+}
+
+LiveLabSimple.prototype.initWebAudio = function(){
+  window.AudioContext = window.AudioContext || window.webkitAudioContext;
+  this.audioContext = new AudioContext();
+
 }
 
 LiveLabSimple.prototype.initLocalStorage = function(){

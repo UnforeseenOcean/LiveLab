@@ -14,10 +14,12 @@ module.exports = React.createClass({
 		//opening separate windows in react http://blog.persistent.info/2016/01/multiple-windows-in-hybrid-react.html
 		 var ip = window.location.host + window.location.pathname;
 		var peerWindow = window.open(null, "new window", 'popup');
-		var container = peerWindow.document.createElement("div");
-		console.log(peerWindow.document.body);
-		peerWindow.document.body.appendChild(container);
-		ReactDOM.render(<VideoContainer stream={this.props.handler.stream} muted={true} />, container);
+		peerWindow.onload = function() {
+			var container = peerWindow.document.createElement("div");
+			console.log(peerWindow.document.body);
+			peerWindow.document.body.appendChild(container);
+			ReactDOM.render(<VideoContainer stream={this.props.handler.stream} muted={true} />, container);
+		}.bind(this);
 		this.setState({showWindow: true});
 //ReactDOM.render(<parts.PanelContents .../>, container);
 	},
@@ -27,9 +29,9 @@ module.exports = React.createClass({
 		if(this.props.handler.hasAudio){
 			//controls.push(<i className="fa fa-volume-up stream-controls"></i>);
 			if(this.props.handler.muted){
-				controls.push(<i className="fa fa-microphone-slash stream-controls" onClick={this.props.handler.toggleMute.bind(this.props.handler)}></i>);
+				controls.push(<i className="fa fa-volume-off stream-controls" onClick={this.props.handler.toggleMute.bind(this.props.handler)}></i>);
 			} else {
-				controls.push(<i className="fa fa-microphone stream-controls" onClick={this.props.handler.toggleMute.bind(this.props.handler)}></i>);
+				controls.push(<i className="fa fa-volume-up stream-controls" onClick={this.props.handler.toggleMute.bind(this.props.handler)}></i>);
 			}
 		}
 		if(this.props.handler.hasVideo){

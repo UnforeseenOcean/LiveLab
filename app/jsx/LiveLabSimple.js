@@ -105,7 +105,8 @@ function LiveLabSimple(config, props){
 
     var self = this;
     webrtc.on('videoRemoved', function (peer) {
-         this.props.updatePeers(webrtc.webrtc.peers);
+         this.props.updateRender();
+         /*TO DO: is any garbage collecting/ cleanup necessary on stream?*/
     }.bind(this));
 }
 

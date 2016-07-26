@@ -1,23 +1,18 @@
 var React = require('react');
 var Landing = require('./Landing.jsx');
 var ControlPanel = require('./ControlPanel.jsx');
-var configData = require('./config.json');
-var LiveLab = require('./LiveLabSimple.js');
+
+var LiveLab = require('./LiveLab.js');
 
 module.exports = React.createClass({
 	/*set room variables from config.json*/
 	getInitialState: function(){
-		return {room: configData.room, webrtc: null, dimensions: {w: 1280, h:720}};
+		return {liveLab: null, dimensions: {w: 1280, h:720}};
 	},
 	/*check for room name in URL, and join room if not null*/
 	componentDidMount: function(){
-		var room = location.search && location.search.split('?')[1];
-		this.liveLab = new LiveLab(configData, this);
-		if(room) {
-			//liveLab.joinRoom(room);
-			this.setState({room: room});
-		}
-		this.setState({dimensions: {w: window.innerWidth, h: window.innerHeight}, webrtc: this.liveLab.webrtc.webrtc});
+		this.liveLab = new LiveLab(this.update);
+		this.setState({dimensions: {w: window.innerWidth, h: window.innerHeight}, liveLab: this.liveLab});
 		window.onresize = function(){
 			this.setState({dimensions: {w: window.innerWidth, h: window.innerHeight}});
 		}.bind(this);
@@ -30,14 +25,13 @@ module.exports = React.createClass({
 		this.setState({peers:peers});
 	},*/
 	update: function(){
-		this.setState({webrtc: this.liveLab.webrtc.webrtc})
+		this.setState({liveLab: this.liveLab})
 	},
 	render: function(){
-		if(this.state.room == null){
-			return <Landing />;
+		if(this.state.liveLab == null){
+			return <Landing dimensions={this.state.dimensions} />;
 		} else {
-			return <ControlPanel s={this.state} liveLab ={this.liveLab}/>;
+			return <ControlPanel dimensions={this.state.dimensions} liveLab ={this.state.liveLab}/>;
 		}
-		
 	}
 });

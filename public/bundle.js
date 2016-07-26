@@ -1,6 +1,8 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict';
 
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
 var React = require('react');
 var StreamContainer = require('./StreamContainer.jsx');
 
@@ -8,13 +10,11 @@ module.exports = React.createClass({
 	displayName: 'exports',
 
 	render: function render() {
-		console.log("PROPS", this.props.s);
-		var localVids = this.props.s.webrtc.localStreams.map(function (stream, index) {
-			return React.createElement(StreamContainer, { stream: stream.stream, handler: stream.handler, muted: true, key: index, dimensions: this.props.s.dimensions, liveLab: this.props.liveLab });
+		var localVids = this.props.liveLab.localStreams.map(function (stream, index) {
+			return React.createElement(StreamContainer, _extends({}, this.props, { stream: stream.stream, handler: stream.handler, muted: true, key: index }));
 		}.bind(this));
-		console.log("PEERS ", this.props.s);
-		var remoteVids = this.props.s.webrtc.peers.map(function (peer, index) {
-			return React.createElement(StreamContainer, { stream: peer.stream, handler: peer.handler, muted: true, key: "peer_" + index, dimensions: this.props.s.dimensions, liveLab: this.props.liveLab });
+		var remoteVids = this.props.liveLab.peers.map(function (peer, index) {
+			return React.createElement(StreamContainer, _extends({}, this.props, { stream: peer.stream, handler: peer.handler, muted: true, key: "peer_" + index }));
 		}.bind(this));
 		return React.createElement(
 			'div',
@@ -53,6 +53,116 @@ module.exports = React.createClass({
 });
 
 },{"react":215}],3:[function(require,module,exports){
+'use strict';
+
+var LiveLabRTC = require('./LiveLabRTC.js');
+var StreamHandler = require('./StreamHandler.js');
+var config = require('./config.json');
+
+/* Main object for LiveLab. All of information about current connected streams is stored in the arrays
+this.localStreams and this.peers */
+function LiveLab(update) {
+    var webrtc = new LiveLabRTC(config.rtc);
+    console.log("WEBRTC", webrtc);
+    this.localStreams = webrtc.webrtc.localStreams;
+    this.peers = webrtc.webrtc.peers;
+
+    var room = location.search && location.search.split('?')[1];
+    this.room = room;
+    this.update = update;
+
+    this.initLocalStorage();
+    this.initWebAudio();
+
+    this.webrtc = webrtc;
+    webrtc.on('readyToCall', function () {
+        console.log(webrtc);
+        this.localStreams = webrtc.webrtc.localStreams;
+        window.localId = webrtc.connection.connection.id;
+        if (this.room) webrtc.joinRoom(this.room);
+        var streamHandler = new StreamHandler(this.localStreams[0], this.audioContext, this.updateRender, this);
+        //this.props.updateLocalStreams(webrtc.webrtc.localStreams);
+        this.updateRender();
+    }.bind(this));
+
+    webrtc.on('localScreenAdded', function (el) {
+        // to do: add to local screens list
+    });
+
+    webrtc.on("localScreenStopped", function (stream) {
+        // to do: add to local screens list
+    });
+
+    webrtc.on('channelMessage', function (peer, label, data) {
+        if (data.type == "chat") {
+            // var name = document.getElementById("header_" + peer.id).innerHTML;
+            // chatWindow.appendToChatLog(name, data.payload);
+
+            //chat add to state
+        } else if (data.type == "osc") {
+            // oscChannels.receivedRemoteStream(data, peer.id, label);
+            // sessionControl.oscParameter(data.payload);
+        } else if (data.type === "sessionInfo") {
+            // one of the peers changed the name of their window
+            if (label === "nameChange") {
+                // update the header of the peer that changed their name
+                //document.getElementById("header_" + peer.id).innerHTML = util.escapeText(data.payload);
+            } else if (label === "shareState" && !window.hasStateInfo) {
+                // update the state of this client to reflect the state of the room
+                window.stateInfo = JSON.parse(data.payload);
+                window.hasStateInfo = true;
+                // reflect the changes in the browser
+                window.stateInfo.peers.forEach(function (existingPeer) {
+                    if (existingPeer.id !== localId && existingPeer.nick) {
+                        document.getElementById("header_" + existingPeer.id).innerHTML = util.escapeText(existingPeer.nick);
+                    }
+                });
+            }
+        } else if (data.type == "code-lab") {
+            // sessionControl.remoteCodeChange(data.payload);
+        } else if (data.type == "mixer") {
+            console.log("MIXER", label, data);
+            // sessionControl.remoteMixerEvent(label, data.payload);
+        }
+    });
+
+    webrtc.on('videoAdded', function (peer) {
+        console.log("VIDEO ADDED", webrtc);
+        var streamHandler = new StreamHandler(peer, this.audioContext, this.updateRender, this);
+        //  this.props.updatePeers(webrtc.webrtc.peers);
+        this.updateRender();
+    }.bind(this));
+
+    var self = this;
+    webrtc.on('videoRemoved', function (peer) {
+        this.props.updateRender();
+        /*TO DO: is any garbage collecting/ cleanup necessary on stream?*/
+    }.bind(this));
+}
+
+LiveLab.prototype.updateRender = function () {
+    this.update();
+    //console.log(this);
+};
+
+LiveLab.prototype.initWebAudio = function () {
+    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+    this.audioContext = new AudioContext();
+};
+
+LiveLab.prototype.initLocalStorage = function () {
+    window.hasStateInfo = false;
+    window.localId = "";
+
+    // structure of state info object:
+    // peers: list of peers, each peer has an id and a nick as following:
+    // {peers: [{id: SDsd8zjcxke23, nick: pablo}, {id: zxczxc9(qeasd, nick: ojack)}]}
+    window.stateInfo = { peers: [] };
+};
+
+module.exports = LiveLab;
+
+},{"./LiveLabRTC.js":4,"./StreamHandler.js":8,"./config.json":10}],4:[function(require,module,exports){
 'use strict';
 
 var WebRTC = require('./../libs/webrtc');
@@ -350,6 +460,7 @@ LiveLabRTC.prototype.handlePeerStreamRemoved = function (peer) {
 LiveLabRTC.prototype.joinRoom = function (name, cb) {
     var self = this;
     this.roomName = name;
+    console.log("JOINIGN ROOM", name);
     this.connection.emit('join', name, function (err, roomDescription) {
         console.log('join CB', err, roomDescription);
         /*  var nick = localStorage.getItem("livelab-localNick");
@@ -501,157 +612,26 @@ LiveLabRTC.prototype.sendFile = function () {
 
 module.exports = LiveLabRTC;
 
-},{"./../libs/socketioconnection":14,"./../libs/webrtc":15,"./../util":16,"attachmediastream":17,"mockconsole":71,"webrtcsupport":280,"wildemitter":281}],4:[function(require,module,exports){
-'use strict';
-
-var LiveLabRTC = require('./LiveLabRTC.js');
-var StreamHandler = require('./StreamHandler.js');
-
-//eventually these settings should be in config
-var tempConfig = { localVideoEl: "video_local",
-    localVideo: {
-        autoplay: true,
-        mirror: false,
-        muted: false
-    },
-    nick: localStorage.getItem("livelab-localNick") || window.localId,
-    // the id/element dom element that will hold remote videos
-    remoteVideosEl: '',
-    // immediately ask for camera access
-    autoRequestMedia: true,
-    debug: false,
-    detectSpeakingEvents: true,
-    autoAdjustMic: false,
-    adjustPeerVolume: false,
-    peerVolumeWhenSpeaking: 1.0,
-    media: {
-        audio: {
-            optional: [{ googAutoGainControl: true }, { googAutoGainControl2: true }, { googEchoCancellation: true }, { googEchoCancellation2: true }, { googNoiseSuppression: true }, { googNoiseSuppression2: true }, { googHighpassFilter: true }, { googTypingNoiseDetection: true }, { googAudioMirroring: true }]
-        },
-        video: {
-            optional: []
-        }
-    }
-};
-
-function LiveLabSimple(config, props) {
-    this.initLocalStorage();
-    this.initWebAudio();
-    this.config = config;
-    this.props = props;
-    var webrtc = new LiveLabRTC(tempConfig);
-    this.webrtc = webrtc;
-    webrtc.on('readyToCall', function () {
-        console.log(webrtc);
-        window.localId = webrtc.connection.connection.id;
-        if (this.props.state.room) webrtc.joinRoom(this.props.state.room);
-        var streamHandler = new StreamHandler(webrtc.webrtc.localStreams[0], this.audioContext, this.updateRender, this);
-        //this.props.updateLocalStreams(webrtc.webrtc.localStreams);
-        this.updateRender();
-    }.bind(this));
-
-    webrtc.on('localScreenAdded', function (el) {
-        // to do: add to local screens list
-    });
-
-    webrtc.on("localScreenStopped", function (stream) {
-        // to do: add to local screens list
-    });
-
-    webrtc.on('channelMessage', function (peer, label, data) {
-        if (data.type == "chat") {
-            // var name = document.getElementById("header_" + peer.id).innerHTML;
-            // chatWindow.appendToChatLog(name, data.payload);
-
-            //chat add to state
-        } else if (data.type == "osc") {
-            // oscChannels.receivedRemoteStream(data, peer.id, label);
-            // sessionControl.oscParameter(data.payload);
-        } else if (data.type === "sessionInfo") {
-            // one of the peers changed the name of their window
-            if (label === "nameChange") {
-                // update the header of the peer that changed their name
-                //document.getElementById("header_" + peer.id).innerHTML = util.escapeText(data.payload);
-            } else if (label === "shareState" && !window.hasStateInfo) {
-                // update the state of this client to reflect the state of the room
-                window.stateInfo = JSON.parse(data.payload);
-                window.hasStateInfo = true;
-                // reflect the changes in the browser
-                window.stateInfo.peers.forEach(function (existingPeer) {
-                    if (existingPeer.id !== localId && existingPeer.nick) {
-                        document.getElementById("header_" + existingPeer.id).innerHTML = util.escapeText(existingPeer.nick);
-                    }
-                });
-            }
-        } else if (data.type == "code-lab") {
-            // sessionControl.remoteCodeChange(data.payload);
-        } else if (data.type == "mixer") {
-            console.log("MIXER", label, data);
-            // sessionControl.remoteMixerEvent(label, data.payload);
-        }
-    });
-
-    webrtc.on('videoAdded', function (peer) {
-        console.log("VIDEO ADDED", webrtc);
-        var streamHandler = new StreamHandler(peer, this.audioContext, this.updateRender, this);
-        //  this.props.updatePeers(webrtc.webrtc.peers);
-        this.updateRender();
-    }.bind(this));
-
-    var self = this;
-    webrtc.on('videoRemoved', function (peer) {
-        this.props.updateRender();
-        /*TO DO: is any garbage collecting/ cleanup necessary on stream?*/
-    }.bind(this));
-}
-
-LiveLabSimple.prototype.updateRender = function () {
-    this.props.update(this.webrtc.webrtc);
-    //console.log(this);
-};
-
-LiveLabSimple.prototype.initWebAudio = function () {
-    window.AudioContext = window.AudioContext || window.webkitAudioContext;
-    this.audioContext = new AudioContext();
-};
-
-LiveLabSimple.prototype.initLocalStorage = function () {
-    window.hasStateInfo = false;
-    window.localId = "";
-
-    // structure of state info object:
-    // peers: list of peers, each peer has an id and a nick as following:
-    // {peers: [{id: SDsd8zjcxke23, nick: pablo}, {id: zxczxc9(qeasd, nick: ojack)}]}
-    window.stateInfo = { peers: [] };
-};
-
-module.exports = LiveLabSimple;
-
-},{"./LiveLabRTC.js":3,"./StreamHandler.js":8}],5:[function(require,module,exports){
+},{"./../libs/socketioconnection":14,"./../libs/webrtc":15,"./../util":16,"attachmediastream":17,"mockconsole":71,"webrtcsupport":280,"wildemitter":281}],5:[function(require,module,exports){
 'use strict';
 
 var React = require('react');
 var Landing = require('./Landing.jsx');
 var ControlPanel = require('./ControlPanel.jsx');
-var configData = require('./config.json');
-var LiveLab = require('./LiveLabSimple.js');
+
+var LiveLab = require('./LiveLab.js');
 
 module.exports = React.createClass({
 	displayName: 'exports',
 
 	/*set room variables from config.json*/
 	getInitialState: function getInitialState() {
-		return { room: configData.room, webrtc: null, dimensions: { w: 1280, h: 720 } };
+		return { liveLab: null, dimensions: { w: 1280, h: 720 } };
 	},
 	/*check for room name in URL, and join room if not null*/
 	componentDidMount: function componentDidMount() {
-		var room = location.search && location.search.split('?')[1];
-		this.liveLab = new LiveLab(configData, this);
-		if (room) {
-			//liveLab.joinRoom(room);
-			this.setState({ room: room });
-		}
-		this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight }, webrtc: this.liveLab.webrtc.webrtc });
+		this.liveLab = new LiveLab(this.update);
+		this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight }, liveLab: this.liveLab });
 		window.onresize = function () {
 			this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight } });
 		}.bind(this);
@@ -664,18 +644,18 @@ module.exports = React.createClass({
  		this.setState({peers:peers});
  	},*/
 	update: function update() {
-		this.setState({ webrtc: this.liveLab.webrtc.webrtc });
+		this.setState({ liveLab: this.liveLab });
 	},
 	render: function render() {
-		if (this.state.room == null) {
-			return React.createElement(Landing, null);
+		if (this.state.liveLab == null) {
+			return React.createElement(Landing, { dimensions: this.state.dimensions });
 		} else {
-			return React.createElement(ControlPanel, { s: this.state, liveLab: this.liveLab });
+			return React.createElement(ControlPanel, { dimensions: this.state.dimensions, liveLab: this.state.liveLab });
 		}
 	}
 });
 
-},{"./ControlPanel.jsx":1,"./Landing.jsx":2,"./LiveLabSimple.js":4,"./config.json":10,"react":215}],6:[function(require,module,exports){
+},{"./ControlPanel.jsx":1,"./Landing.jsx":2,"./LiveLab.js":3,"react":215}],6:[function(require,module,exports){
 'use strict';
 
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
@@ -735,24 +715,47 @@ module.exports = React.createClass({
 	displayName: 'exports',
 
 	getInitialState: function getInitialState() {
-		return { showSettings: false, showWindow: false };
+		return { showSettings: false, showWindow: false, fullscreen: false };
 	},
 	showSettings: function showSettings() {
 		this.setState({ showSettings: this.state.showSettings ? false : true });
 	},
+	toggleFullscreen: function toggleFullscreen() {
+		var isFirefox = typeof InstallTrigger !== 'undefined';
+		var isChrome = !!window.chrome && !!window.chrome.webstore;
+		if (this.state.fullscreen) {} else {
+			if (isFirefox == true) {
+				this.childWindow.document.getElementsByTagName('video')[0].mozRequestFullScreen();
+			}
+			if (isChrome == true) {
+				this.childWindow.document.getElementsByTagName('video')[0].webkitRequestFullScreen();
+			}
+			this.setState({ fullscreen: true });
+		}
+	},
 	showWindow: function showWindow() {
-		//var otherWindow = window.open("show", 'popup');
-		//opening separate windows in react http://blog.persistent.info/2016/01/multiple-windows-in-hybrid-react.html
-		var ip = window.location.host + window.location.pathname;
 		var peerWindow = window.open(null, "new window", 'popup');
-		peerWindow.onload = function () {
+		var isFirefox = typeof InstallTrigger !== 'undefined';
+		var isChrome = !!window.chrome && !!window.chrome.webstore;
+		if (isChrome) {
 			var container = peerWindow.document.createElement("div");
-			console.log(peerWindow.document.body);
 			peerWindow.document.body.appendChild(container);
-			ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, muted: true }), container);
+			ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, fullscreen: this.state.fullscreen, muted: true }), container);
+		}
+		if (isFirefox) {
+			peerWindow.onload = function () {
+				var container = peerWindow.document.createElement("div");
+				peerWindow.document.body.appendChild(container);
+				ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, fullscreen: this.state.fullscreen, muted: true }), container);
+			}.bind(this);
+		}
+		/* Detect when window is closed by user */
+		peerWindow.onbeforeunload = function () {
+			console.log("closing window");
+			this.setState({ showWindow: false, fullscreen: false });
 		}.bind(this);
+		this.childWindow = peerWindow;
 		this.setState({ showWindow: true });
-		//ReactDOM.render(<parts.PanelContents .../>, container);
 	},
 	render: function render() {
 
@@ -766,7 +769,12 @@ module.exports = React.createClass({
 			}
 		}
 		if (this.props.handler.hasVideo) {
-			controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls', onClick: this.showWindow }));
+			if (!this.state.showWindow) {
+				controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls', onClick: this.showWindow }));
+			} else {
+				controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls selected', onClick: this.showWindow }));
+				controls.push(React.createElement('i', { className: 'fa fa-expand stream-controls', onClick: this.toggleFullscreen }));
+			}
 		}
 		controls.push(React.createElement('i', { className: 'fa fa-cog stream-controls', onClick: this.showSettings }));
 
@@ -871,24 +879,29 @@ module.exports = React.createClass({
 },{"react":215}],10:[function(require,module,exports){
 module.exports={
 	"room": null,
-	"peers": {},
-	"defaultRTCConfig": {
-		"localSignalling": "https://localhost:8888",
-		"signallingServer": "https://sandbox.simplewebrtc.com:443/",
-		"peerConnectionConfig": {
-            "iceServers": [
-                	{"urls": "stun:stun.l.google.com:19302"}
-                ]
+	"rtc": {
+       "autoRequestMedia": true,
+       "media": {
+         "audio": {
+           "optional": [
+          {"googAutoGainControl": true}, 
+           {"googAutoGainControl2": true}, 
+           {"googEchoCancellation": true},
+           {"googEchoCancellation2": true},
+           {"googNoiseSuppression": true},
+           {"googNoiseSuppression2": true},
+           {"googHighpassFilter": true},
+           {"googTypingNoiseDetection": true},
+           {"googAudioMirroring": true}
+           ]
          },
-        "peerConnectionConstraints": {
-            "optional": []
-         },
-            "receiveMedia": {
-                "offerToReceiveAudio": 1,
-                "offerToReceiveVideo": 1
-            },
-          "enableDataChannels": true
-      }
+         "video": {
+           "optional": [
+           ]
+         }
+       }
+     }
+	
 }
 },{}],11:[function(require,module,exports){
 'use strict';

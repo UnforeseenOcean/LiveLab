@@ -1,21 +1,26 @@
 {
 	"room": null,
-	"peers": {},
-	"defaultRTCConfig": {
-		"localSignalling": "https://localhost:8888",
-		"signallingServer": "https://sandbox.simplewebrtc.com:443/",
-		"peerConnectionConfig": {
-            "iceServers": [
-                	{"urls": "stun:stun.l.google.com:19302"}
-                ]
+	"rtc": {
+       "autoRequestMedia": true,
+       "media": {
+         "audio": {
+           "optional": [
+          {"googAutoGainControl": true}, 
+           {"googAutoGainControl2": true}, 
+           {"googEchoCancellation": true},
+           {"googEchoCancellation2": true},
+           {"googNoiseSuppression": true},
+           {"googNoiseSuppression2": true},
+           {"googHighpassFilter": true},
+           {"googTypingNoiseDetection": true},
+           {"googAudioMirroring": true}
+           ]
          },
-        "peerConnectionConstraints": {
-            "optional": []
-         },
-            "receiveMedia": {
-                "offerToReceiveAudio": 1,
-                "offerToReceiveVideo": 1
-            },
-          "enableDataChannels": true
-      }
+         "video": {
+           "optional": [
+           ]
+         }
+       }
+     }
+	
 }

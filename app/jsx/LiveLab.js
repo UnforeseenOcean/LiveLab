@@ -1,56 +1,33 @@
 var LiveLabRTC = require('./LiveLabRTC.js'); 
 var StreamHandler = require('./StreamHandler.js');
+var config = require('./config.json');
 
-//eventually these settings should be in config
-var tempConfig = {localVideoEl: "video_local",
-       localVideo: {
-               autoplay: true,
-               mirror: false,
-               muted: false
-           },
-       nick: localStorage.getItem("livelab-localNick") || window.localId,
-       // the id/element dom element that will hold remote videos
-       remoteVideosEl: '',
-       // immediately ask for camera access
-       autoRequestMedia: true,
-       debug: false,
-       detectSpeakingEvents: true,
-       autoAdjustMic: false,
-       adjustPeerVolume: false,
-       peerVolumeWhenSpeaking: 1.0,
-       media: {
-         audio: {
-           optional: [
-          {googAutoGainControl: true}, 
-           {googAutoGainControl2: true}, 
-           {googEchoCancellation: true},
-           {googEchoCancellation2: true},
-           {googNoiseSuppression: true},
-           {googNoiseSuppression2: true},
-           {googHighpassFilter: true},
-           {googTypingNoiseDetection: true},
-           {googAudioMirroring: true}
-           ]
-         },
-         video: {
-           optional: [
-           ]
-         }
-       }
-   };
+/* Main object for LiveLab. All of information about current connected streams is stored in the arrays
+this.localStreams and this.peers */ 
+function LiveLab(update){
+     var webrtc = new LiveLabRTC(config.rtc);
+    console.log("WEBRTC", webrtc);
+    this.localStreams = webrtc.webrtc.localStreams;
+    this.peers = webrtc.webrtc.peers;
 
-function LiveLabSimple(config, props){
+
+    var room = location.search && location.search.split('?')[1];
+    this.room = room;
+    this.update = update;
+   
+
     this.initLocalStorage();
     this.initWebAudio();
-    this.config = config;
-    this.props = props;
-    var webrtc = new LiveLabRTC(tempConfig);
+  
+
+   
     this.webrtc = webrtc;
     webrtc.on('readyToCall', function () {
         console.log(webrtc);
+        this.localStreams = webrtc.webrtc.localStreams;
         window.localId = webrtc.connection.connection.id;
-        if (this.props.state.room) webrtc.joinRoom(this.props.state.room);
-         var streamHandler = new StreamHandler(webrtc.webrtc.localStreams[0], this.audioContext, this.updateRender, this);
+        if (this.room) webrtc.joinRoom(this.room);
+         var streamHandler = new StreamHandler(this.localStreams[0], this.audioContext, this.updateRender, this);
         //this.props.updateLocalStreams(webrtc.webrtc.localStreams);
         this.updateRender();
     }.bind(this));
@@ -110,18 +87,18 @@ function LiveLabSimple(config, props){
     }.bind(this));
 }
 
-LiveLabSimple.prototype.updateRender = function(){
-  this.props.update(this.webrtc.webrtc);
+LiveLab.prototype.updateRender = function(){
+  this.update();
   //console.log(this);
 }
 
-LiveLabSimple.prototype.initWebAudio = function(){
+LiveLab.prototype.initWebAudio = function(){
   window.AudioContext = window.AudioContext || window.webkitAudioContext;
   this.audioContext = new AudioContext();
 
 }
 
-LiveLabSimple.prototype.initLocalStorage = function(){
+LiveLab.prototype.initLocalStorage = function(){
    window.hasStateInfo = false;
 window.localId = "";
 
@@ -132,4 +109,4 @@ window.stateInfo = {peers: []};
 
 }
 
-module.exports = LiveLabSimple;
+module.exports = LiveLab;

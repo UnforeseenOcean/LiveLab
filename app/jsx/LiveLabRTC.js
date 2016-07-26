@@ -296,6 +296,7 @@ LiveLabRTC.prototype.handlePeerStreamRemoved = function (peer) {
 LiveLabRTC.prototype.joinRoom = function (name, cb) {
     var self = this;
     this.roomName = name;
+    console.log("JOINIGN ROOM", name);
     this.connection.emit('join', name, function (err, roomDescription) {
         console.log('join CB', err, roomDescription);
       /*  var nick = localStorage.getItem("livelab-localNick");

@@ -21,14 +21,14 @@ SessionControl.prototype.createControlUI = function(container){
 	sessionDiv.id = "sessionControl";
     sessionDiv.className = "toolbar-element hide";
 
-     var vidSrc = this.video.src;
+     var vidSrc = this.video.srcObject;
      var showWindow;
      var globalThis = this;
      var showWinButton = createButton("window", function () {
-          showWindow = window.open("https://" + ip + "/show.html", 'Show', 'popup');
+          showWindow = window.open("https://" + ip + "show.html", 'Show', 'popup');
           showWindow.onload = function () {
             var showVid = showWindow.document.getElementById('showVideo');
-            showVid.src = vidSrc;
+            showVid.srcObject = vidSrc;
           }.bind(globalThis);
           globalThis.showWindow = showWindow;
     });

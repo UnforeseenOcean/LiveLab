@@ -1,919 +1,167 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict';
 
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
-
-var React = require('react');
-var StreamContainer = require('./StreamContainer.jsx');
-
-module.exports = React.createClass({
-	displayName: 'exports',
-
-	render: function render() {
-		var localVids = this.props.liveLab.localStreams.map(function (stream, index) {
-			return React.createElement(StreamContainer, _extends({}, this.props, { stream: stream.stream, handler: stream.handler, muted: true, key: index }));
-		}.bind(this));
-		var remoteVids = this.props.liveLab.peers.map(function (peer, index) {
-			return React.createElement(StreamContainer, _extends({}, this.props, { stream: peer.stream, handler: peer.handler, muted: true, key: "peer_" + index }));
-		}.bind(this));
-		return React.createElement(
-			'div',
-			null,
-			localVids,
-			remoteVids
-		);
-	}
-});
-
-},{"./StreamContainer.jsx":6,"react":215}],2:[function(require,module,exports){
-"use strict";
-
-var React = require('react');
-
-module.exports = React.createClass({
-  displayName: "exports",
-
-  render: function render() {
-    return React.createElement(
-      "form",
-      { id: "createRoom" },
-      React.createElement(
-        "h1",
-        null,
-        "Start a room"
-      ),
-      React.createElement("input", { id: "sessionInput" }),
-      React.createElement(
-        "button",
-        { type: "submit" },
-        "Create it!"
-      )
-    );
-  }
-});
-
-},{"react":215}],3:[function(require,module,exports){
-'use strict';
-
 var LiveLabRTC = require('./LiveLabRTC.js');
 var StreamHandler = require('./StreamHandler.js');
-var config = require('./config.json');
+var config = require('./../config.json');
 
 /* Main object for LiveLab. All of information about current connected streams is stored in the arrays
 this.localStreams and this.peers */
 function LiveLab(update) {
-    var webrtc = new LiveLabRTC(config.rtc);
-    console.log("WEBRTC", webrtc);
+  /*init webrtc based on settings defined in config.json */
+
+  var webrtc = new LiveLabRTC(config.rtc);
+  console.log("WEBRTC", webrtc);
+
+  /* localStreams is an array of objects containing the local media:
+    {
+      stream: <MediaStreamObject>,
+      handler: <StreamHandlerObject>
+  }
+  */
+  this.localStreams = webrtc.webrtc.localStreams;
+
+  /* peers is an array of objects containing peer streams:
+   {
+     stream: <MediaStreamObject>,
+     id: <peer id>,
+     handler: <StreamHandlerObject>,
+     pc: <rtcpeerconnection>,
+     channels: <array of data channels>
+  }
+  */
+  this.peers = webrtc.webrtc.peers;
+
+  /* get room name from url. TO DO: read from config.json */
+  var room = location.search && location.search.split('?')[1];
+  this.room = room;
+
+  /*function to update render cycle when code as changed */
+  this.update = update;
+
+  this.initLocalStorage();
+  this.initWebAudio();
+  this.getOutputDevices();
+
+  /*init webRTC event handlers */
+  this.webrtc = webrtc;
+  webrtc.on('readyToCall', function () {
+    console.log(webrtc);
     this.localStreams = webrtc.webrtc.localStreams;
-    this.peers = webrtc.webrtc.peers;
+    window.localId = webrtc.connection.connection.id;
+    if (this.room) webrtc.joinRoom(this.room);
+    var streamHandler = new StreamHandler(this.localStreams[0], this.audioContext, this);
+    this.update();
+  }.bind(this));
 
-    var room = location.search && location.search.split('?')[1];
-    this.room = room;
-    this.update = update;
+  webrtc.on('localScreenAdded', function (el) {
+    // to do: add to local screens list
+  });
 
-    this.initLocalStorage();
-    this.initWebAudio();
+  webrtc.on("localScreenStopped", function (stream) {
+    // to do: add to local screens list
+  });
 
-    this.webrtc = webrtc;
-    webrtc.on('readyToCall', function () {
-        console.log(webrtc);
-        this.localStreams = webrtc.webrtc.localStreams;
-        window.localId = webrtc.connection.connection.id;
-        if (this.room) webrtc.joinRoom(this.room);
-        var streamHandler = new StreamHandler(this.localStreams[0], this.audioContext, this.updateRender, this);
-        //this.props.updateLocalStreams(webrtc.webrtc.localStreams);
-        this.updateRender();
-    }.bind(this));
+  /* new local stream is added */
+  this.webrtc.on('additionalStream', function (streamObj) {
 
-    webrtc.on('localScreenAdded', function (el) {
-        // to do: add to local screens list
-    });
+    // console.log("STREAM" ,streamObj);
+    //console.log("STREAM" ,this.webrtc);
+    //  var tracks = streamObj.stream.getTracks();
+    //  console.log(tracks);
+    var streamHandler = new StreamHandler(streamObj, this.audioContext, this);
+    //  
+    console.log(this);
+    this.update();
+  }.bind(this));
 
-    webrtc.on("localScreenStopped", function (stream) {
-        // to do: add to local screens list
-    });
+  webrtc.on('channelMessage', function (peer, label, data) {
+    if (data.type == "chat") {
+      // var name = document.getElementById("header_" + peer.id).innerHTML;
+      // chatWindow.appendToChatLog(name, data.payload);
 
-    webrtc.on('channelMessage', function (peer, label, data) {
-        if (data.type == "chat") {
-            // var name = document.getElementById("header_" + peer.id).innerHTML;
-            // chatWindow.appendToChatLog(name, data.payload);
+      //chat add to state
+    } else if (data.type == "osc") {
+      // oscChannels.receivedRemoteStream(data, peer.id, label);
+      // sessionControl.oscParameter(data.payload);
+    } else if (data.type === "sessionInfo") {
+      // one of the peers changed the name of their window
+      if (label === "nameChange") {
+        // update the header of the peer that changed their name
+        //document.getElementById("header_" + peer.id).innerHTML = util.escapeText(data.payload);
+      } else if (label === "shareState" && !window.hasStateInfo) {
+        // update the state of this client to reflect the state of the room
+        window.stateInfo = JSON.parse(data.payload);
+        window.hasStateInfo = true;
+        // reflect the changes in the browser
+        window.stateInfo.peers.forEach(function (existingPeer) {
+          if (existingPeer.id !== localId && existingPeer.nick) {
+            document.getElementById("header_" + existingPeer.id).innerHTML = util.escapeText(existingPeer.nick);
+          }
+        });
+      }
+    } else if (data.type == "code-lab") {
+      // sessionControl.remoteCodeChange(data.payload);
+    } else if (data.type == "mixer") {
+      console.log("MIXER", label, data);
+      // sessionControl.remoteMixerEvent(label, data.payload);
+    }
+  });
 
-            //chat add to state
-        } else if (data.type == "osc") {
-            // oscChannels.receivedRemoteStream(data, peer.id, label);
-            // sessionControl.oscParameter(data.payload);
-        } else if (data.type === "sessionInfo") {
-            // one of the peers changed the name of their window
-            if (label === "nameChange") {
-                // update the header of the peer that changed their name
-                //document.getElementById("header_" + peer.id).innerHTML = util.escapeText(data.payload);
-            } else if (label === "shareState" && !window.hasStateInfo) {
-                // update the state of this client to reflect the state of the room
-                window.stateInfo = JSON.parse(data.payload);
-                window.hasStateInfo = true;
-                // reflect the changes in the browser
-                window.stateInfo.peers.forEach(function (existingPeer) {
-                    if (existingPeer.id !== localId && existingPeer.nick) {
-                        document.getElementById("header_" + existingPeer.id).innerHTML = util.escapeText(existingPeer.nick);
-                    }
-                });
-            }
-        } else if (data.type == "code-lab") {
-            // sessionControl.remoteCodeChange(data.payload);
-        } else if (data.type == "mixer") {
-            console.log("MIXER", label, data);
-            // sessionControl.remoteMixerEvent(label, data.payload);
-        }
-    });
+  webrtc.on('peerStreamAdded', function (streamObj) {
+    // console.log("PEER STREAM ADDED", streamObj);
+    var streamHandler = new StreamHandler(streamObj, this.audioContext, this);
+    //console.log("PEER ADDED", this.peers);
+    //console.log(peer);
+    // console.log(this.webrtc);
+    this.update();
+  }.bind(this));
 
-    webrtc.on('videoAdded', function (peer) {
-        console.log("VIDEO ADDED", webrtc);
-        var streamHandler = new StreamHandler(peer, this.audioContext, this.updateRender, this);
-        //  this.props.updatePeers(webrtc.webrtc.peers);
-        this.updateRender();
-    }.bind(this));
-
-    var self = this;
-    webrtc.on('videoRemoved', function (peer) {
-        this.props.updateRender();
-        /*TO DO: is any garbage collecting/ cleanup necessary on stream?*/
-    }.bind(this));
+  var self = this;
+  webrtc.on('peerStreamRemoved', function (peer) {
+    this.update();
+    /*TO DO: is any garbage collecting/ cleanup necessary on stream?*/
+  }.bind(this));
 }
 
-LiveLab.prototype.updateRender = function () {
-    this.update();
-    //console.log(this);
+LiveLab.prototype.getOutputDevices = function () {
+  var devices = {};
+  devices.videoinput = [];
+  devices.audioinput = [];
+  devices.audiooutput = [];
+  navigator.mediaDevices.enumerateDevices().then(function (MediaDeviceInfo) {
+    for (var i = 0; i < MediaDeviceInfo.length; i++) {
+      var device = MediaDeviceInfo[i];
+      devices[device.kind].push(device);
+    }
+    this.devices = devices;
+    console.log(this);
+  }.bind(this));
 };
 
 LiveLab.prototype.initWebAudio = function () {
-    window.AudioContext = window.AudioContext || window.webkitAudioContext;
-    this.audioContext = new AudioContext();
+  window.AudioContext = window.AudioContext || window.webkitAudioContext;
+  this.audioContext = new AudioContext();
+};
+
+LiveLab.prototype.newStream = function (constraints) {
+  // console.log("ADD STREAM ", constraints);
+  this.webrtc.addStream(constraints);
 };
 
 LiveLab.prototype.initLocalStorage = function () {
-    window.hasStateInfo = false;
-    window.localId = "";
+  window.hasStateInfo = false;
+  window.localId = "";
 
-    // structure of state info object:
-    // peers: list of peers, each peer has an id and a nick as following:
-    // {peers: [{id: SDsd8zjcxke23, nick: pablo}, {id: zxczxc9(qeasd, nick: ojack)}]}
-    window.stateInfo = { peers: [] };
+  // structure of state info object:
+  // peers: list of peers, each peer has an id and a nick as following:
+  // {peers: [{id: SDsd8zjcxke23, nick: pablo}, {id: zxczxc9(qeasd, nick: ojack)}]}
+  window.stateInfo = { peers: [] };
 };
 
 module.exports = LiveLab;
 
-},{"./LiveLabRTC.js":4,"./StreamHandler.js":8,"./config.json":10}],4:[function(require,module,exports){
-'use strict';
-
-var WebRTC = require('./../libs/webrtc');
-var util = require('./../util');
-var WildEmitter = require('wildemitter');
-var webrtcSupport = require('webrtcsupport');
-var attachMediaStream = require('attachmediastream');
-var mockconsole = require('mockconsole');
-var SocketIoConnection = require('./../libs/socketioconnection');
-
-function LiveLabRTC(opts) {
-    var self = this;
-    var options = opts || {};
-    var config = this.config = {
-        url: 'https://sandbox.simplewebrtc.com:443/',
-        socketio: {/* 'force new connection':true*/},
-        connection: null,
-        debug: true,
-        enableDataChannels: true,
-        autoRequestMedia: false,
-        autoRemoveVideos: true,
-        adjustPeerVolume: false,
-        peerVolumeWhenSpeaking: 0.25,
-        media: {
-            video: true,
-            audio: true
-        },
-        receiveMedia: {
-            offerToReceiveAudio: 1,
-            offerToReceiveVideo: 1
-        },
-        localVideo: {
-            autoplay: true,
-            mirror: true,
-            muted: true
-        }
-    };
-    var item, connection;
-
-    // We also allow a 'logger' option. It can be any object that implements
-    // log, warn, and error methods.
-    // We log nothing by default, following "the rule of silence":
-    // http://www.linfo.org/rule_of_silence.html
-    this.logger = function () {
-        // we assume that if you're in debug mode and you didn't
-        // pass in a logger, you actually want to log as much as
-        // possible.
-        if (opts.debug) {
-            return opts.logger || console;
-        } else {
-            // or we'll use your logger which should have its own logic
-            // for output. Or we'll return the no-op.
-            return opts.logger || mockconsole;
-        }
-    }();
-
-    // set our config from options
-    for (item in options) {
-        this.config[item] = options[item];
-    }
-
-    // attach detected support for convenience
-    this.capabilities = webrtcSupport;
-
-    // call WildEmitter constructor
-    WildEmitter.call(this);
-
-    // create default SocketIoConnection if it's not passed in
-    if (this.config.connection === null) {
-        connection = this.connection = new SocketIoConnection(this.config);
-    } else {
-        connection = this.connection = this.config.connection;
-    }
-
-    connection.on('connect', function () {
-        self.emit('connectionReady', connection.getSessionid());
-        self.sessionReady = true;
-        self.testReadiness();
-    });
-
-    connection.on('message', function (message) {
-        var peers = self.webrtc.getPeers(message.from, message.roomType);
-        var peer;
-
-        if (message.type === 'offer') {
-            if (peers.length) {
-                peers.forEach(function (p) {
-                    if (p.sid == message.sid) peer = p;
-                });
-                //if (!peer) peer = peers[0]; // fallback for old protocol versions
-            }
-            if (!peer) {
-                peer = self.webrtc.createPeer({
-                    id: message.from,
-                    sid: message.sid,
-                    type: message.roomType,
-                    enableDataChannels: self.config.enableDataChannels && message.roomType !== 'screen',
-                    sharemyscreen: message.roomType === 'screen' && !message.broadcaster,
-                    broadcaster: message.roomType === 'screen' && !message.broadcaster ? self.connection.getSessionid() : null
-                });
-                self.emit('createdPeer', peer);
-            }
-            peer.handleMessage(message);
-        } else if (peers.length) {
-            peers.forEach(function (peer) {
-                if (message.sid) {
-                    if (peer.sid === message.sid) {
-                        peer.handleMessage(message);
-                    }
-                } else {
-                    peer.handleMessage(message);
-                }
-            });
-        }
-    });
-
-    connection.on('remove', function (room) {
-        if (room.id !== self.connection.getSessionid()) {
-            self.webrtc.removePeers(room.id, room.type);
-        }
-    });
-
-    // instantiate our main WebRTC helper
-    // using same logger from logic here
-    opts.logger = this.logger;
-    opts.debug = false;
-    this.webrtc = new WebRTC(opts);
-
-    // attach a few methods from underlying lib to simple.
-    ['mute', 'unmute', 'pauseVideo', 'resumeVideo', 'pause', 'resume', 'sendToAll', 'sendDirectlyToAll', 'getPeers', 'sendDirectly'].forEach(function (method) {
-        self[method] = self.webrtc[method].bind(self.webrtc);
-    });
-
-    // proxy events from WebRTC
-    this.webrtc.on('*', function () {
-        self.emit.apply(self, arguments);
-    });
-
-    // log all events in debug mode
-    if (config.debug) {
-        this.on('*', this.logger.log.bind(this.logger, 'LiveLabRTC event:'));
-    }
-
-    // check for readiness
-    this.webrtc.on('localStream', function () {
-        self.testReadiness();
-    });
-
-    this.webrtc.on('additionalStream', function () {
-        console.log("ADDITIONAL STREAM");
-        console.log(this);
-    });
-
-    this.webrtc.on('message', function (payload) {
-        self.connection.emit('message', payload);
-    });
-
-    this.webrtc.on('peerStreamAdded', this.handlePeerStreamAdded.bind(this));
-    this.webrtc.on('peerStreamRemoved', this.handlePeerStreamRemoved.bind(this));
-
-    // echo cancellation attempts
-    if (this.config.adjustPeerVolume) {
-        this.webrtc.on('speaking', this.setVolumeForAll.bind(this, this.config.peerVolumeWhenSpeaking));
-        this.webrtc.on('stoppedSpeaking', this.setVolumeForAll.bind(this, 1));
-    }
-
-    connection.on('stunservers', function (args) {
-        // resets/overrides the config
-        self.webrtc.config.peerConnectionConfig.iceServers = args;
-        self.emit('stunservers', args);
-    });
-    connection.on('turnservers', function (args) {
-        // appends to the config
-        self.webrtc.config.peerConnectionConfig.iceServers = self.webrtc.config.peerConnectionConfig.iceServers.concat(args);
-        self.emit('turnservers', args);
-    });
-
-    this.webrtc.on('iceFailed', function (peer) {
-        // local ice failure
-    });
-    this.webrtc.on('connectivityError', function (peer) {
-        // remote ice failure
-    });
-
-    // screensharing events
-    this.webrtc.on('localScreen', function (stream) {
-        var item,
-            el = document.createElement('video'),
-            container = self.getRemoteVideoContainer();
-
-        el.oncontextmenu = function () {
-            return false;
-        };
-        el.id = 'localScreen';
-        attachMediaStream(stream, el);
-        if (container) {
-            container.appendChild(el);
-        }
-
-        self.emit('localScreenAdded', el);
-        self.connection.emit('shareScreen');
-
-        self.webrtc.peers.forEach(function (existingPeer) {
-            var peer;
-            if (existingPeer.type === 'video') {
-                peer = self.webrtc.createPeer({
-                    id: existingPeer.id,
-                    type: 'screen',
-                    sharemyscreen: true,
-                    enableDataChannels: false,
-                    receiveMedia: {
-                        offerToReceiveAudio: 0,
-                        offerToReceiveVideo: 0
-                    },
-                    broadcaster: self.connection.getSessionid()
-                });
-                self.emit('createdPeer', peer);
-                peer.start();
-            }
-        });
-    });
-    this.webrtc.on('localScreenStopped', function (stream) {
-        self.stopScreenShare();
-        /*
-        self.connection.emit('unshareScreen');
-        self.webrtc.peers.forEach(function (peer) {
-            if (peer.sharemyscreen) {
-                peer.end();
-            }
-        });
-        */
-    });
-
-    this.webrtc.on('channelMessage', function (peer, label, data) {
-        if (data.type == 'volume') {
-            self.emit('remoteVolumeChange', peer, data.volume);
-        }
-    });
-
-    if (this.config.autoRequestMedia) this.startLocalVideo();
-}
-
-LiveLabRTC.prototype = Object.create(WildEmitter.prototype, {
-    constructor: {
-        value: LiveLabRTC
-    }
-});
-
-LiveLabRTC.prototype.leaveRoom = function () {
-    if (this.roomName) {
-        this.connection.emit('leave');
-        while (this.webrtc.peers.length) {
-            this.webrtc.peers.shift().end();
-        }
-        if (this.getLocalScreen()) {
-            this.stopScreenShare();
-        }
-        this.emit('leftRoom', this.roomName);
-        this.roomName = undefined;
-    }
-};
-
-LiveLabRTC.prototype.addStream = function () {
-    this.webrtc.addStream();
-};
-
-LiveLabRTC.prototype.disconnect = function () {
-    this.connection.disconnect();
-    delete this.connection;
-};
-
-LiveLabRTC.prototype.handlePeerStreamAdded = function (peer) {
-    var self = this;
-    // var container = this.getRemoteVideoContainer();
-    // var video = attachMediaStream(peer.stream);
-
-    // // store video element as part of peer for easy removal
-    // peer.videoEl = video;
-    // video.id = this.getDomId(peer);
-
-    // if (container) container.appendChild(video);
-
-    this.emit('videoAdded', peer);
-
-    // send our mute status to new peer if we're muted
-    // currently called with a small delay because it arrives before
-    // the video element is created otherwise (which happens after
-    // the async setRemoteDescription-createAnswer)
-};
-
-LiveLabRTC.prototype.handlePeerStreamRemoved = function (peer) {
-    this.emit('videoRemoved', peer);
-};
-
-LiveLabRTC.prototype.joinRoom = function (name, cb) {
-    var self = this;
-    this.roomName = name;
-    console.log("JOINIGN ROOM", name);
-    this.connection.emit('join', name, function (err, roomDescription) {
-        console.log('join CB', err, roomDescription);
-        /*  var nick = localStorage.getItem("livelab-localNick");
-          // we don't have any nick saved in local storage - just use the
-          // localId as nick
-          if (nick === null) {
-              nick = window.localId;
-          }
-          // if amount of clients given by roomDescription is 0, then we have
-          // joined an empty room
-          window.hasStateInfo = (Object.keys(roomDescription.clients).length) === 0;
-          if (window.hasStateInfo) {
-              window.stateInfo.peers.push({id: window.localId, nick: nick});
-          }*/
-
-        if (err) {
-            self.emit('error', err);
-        } else {
-            var id, client, type, peer;
-            for (id in roomDescription.clients) {
-                client = roomDescription.clients[id];
-                for (type in client) {
-                    if (client[type]) {
-                        peer = self.webrtc.createPeer({
-                            id: id,
-                            type: type,
-                            enableDataChannels: self.config.enableDataChannels && type !== 'screen',
-                            receiveMedia: {
-                                offerToReceiveAudio: type !== 'screen' && self.config.receiveMedia.offerToReceiveAudio ? 1 : 0,
-                                offerToReceiveVideo: self.config.receiveMedia.offerToReceiveVideo
-                            }
-                        });
-                        self.emit('createdPeer', peer);
-                        peer.start();
-                    }
-                }
-            }
-        }
-
-        if (cb) cb(err, roomDescription);
-        self.emit('joinedRoom', name);
-    });
-};
-
-LiveLabRTC.prototype.getEl = function (idOrEl) {
-    if (typeof idOrEl === 'string') {
-        return document.getElementById(idOrEl);
-    } else {
-        return idOrEl;
-    }
-};
-
-LiveLabRTC.prototype.startLocalVideo = function () {
-    var self = this;
-    this.webrtc.startLocalMedia(this.config.media, function (err, stream) {
-        if (err) {
-            self.emit('localMediaError', err);
-        } else {
-            //attachMediaStream(stream, self.getLocalVideoContainer(), self.config.localVideo);
-        }
-    });
-};
-
-LiveLabRTC.prototype.stopLocalVideo = function () {
-    this.webrtc.stopLocalMedia();
-};
-
-// this accepts either element ID or element
-// and either the video tag itself or a container
-// that will be used to put the video tag into.
-/*LiveLabRTC.prototype.getLocalVideoContainer = function () {
-    var el = this.getEl(this.config.localVideoEl);
-    if (el && el.tagName === 'VIDEO') {
-        el.oncontextmenu = function () { return false; };
-        return el;
-    } else if (el) {
-        var video = document.createElement('video');
-        video.oncontextmenu = function () { return false; };
-        el.appendChild(video);
-        return video;
-    } else {
-        return;
-    }
-};*/
-
-/*LiveLabRTC.prototype.getRemoteVideoContainer = function () {
-    return this.getEl(this.config.remoteVideosEl);
-};*/
-
-LiveLabRTC.prototype.shareScreen = function (cb) {
-    this.webrtc.startScreenShare(cb);
-};
-
-LiveLabRTC.prototype.getLocalScreen = function () {
-    return this.webrtc.localScreen;
-};
-
-LiveLabRTC.prototype.stopScreenShare = function () {
-    this.connection.emit('unshareScreen');
-    var videoEl = document.getElementById('localScreen');
-    var container = this.getRemoteVideoContainer();
-    var stream = this.getLocalScreen();
-
-    if (this.config.autoRemoveVideos && container && videoEl) {
-        container.removeChild(videoEl);
-    }
-
-    // a hack to emit the event the removes the video
-    // element that we want
-    if (videoEl) this.emit('videoRemoved', videoEl);
-    if (stream) {
-        stream.getTracks().forEach(function (track) {
-            track.stop();
-        });
-    }
-    this.webrtc.peers.forEach(function (peer) {
-        if (peer.broadcaster) {
-            peer.end();
-        }
-    });
-    //delete this.webrtc.localScreen;
-};
-
-LiveLabRTC.prototype.testReadiness = function () {
-    var self = this;
-    if (this.sessionReady) {
-        if (!this.config.media.video && !this.config.media.audio) {
-            self.emit('readyToCall', self.connection.getSessionid());
-        } else if (this.webrtc.localStreams.length > 0) {
-            self.emit('readyToCall', self.connection.getSessionid());
-        }
-    }
-};
-
-LiveLabRTC.prototype.createRoom = function (name, cb) {
-    this.roomName = name;
-    if (arguments.length === 2) {
-        this.connection.emit('create', name, cb);
-    } else {
-        this.connection.emit('create', name);
-    }
-};
-
-LiveLabRTC.prototype.sendFile = function () {
-    if (!webrtcSupport.dataChannel) {
-        return this.emit('error', new Error('DataChannelNotSupported'));
-    }
-};
-
-module.exports = LiveLabRTC;
-
-},{"./../libs/socketioconnection":14,"./../libs/webrtc":15,"./../util":16,"attachmediastream":17,"mockconsole":71,"webrtcsupport":280,"wildemitter":281}],5:[function(require,module,exports){
-'use strict';
-
-var React = require('react');
-var Landing = require('./Landing.jsx');
-var ControlPanel = require('./ControlPanel.jsx');
-
-var LiveLab = require('./LiveLab.js');
-
-module.exports = React.createClass({
-	displayName: 'exports',
-
-	/*set room variables from config.json*/
-	getInitialState: function getInitialState() {
-		return { liveLab: null, dimensions: { w: 1280, h: 720 } };
-	},
-	/*check for room name in URL, and join room if not null*/
-	componentDidMount: function componentDidMount() {
-		this.liveLab = new LiveLab(this.update);
-		this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight }, liveLab: this.liveLab });
-		window.onresize = function () {
-			this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight } });
-		}.bind(this);
-	},
-	/*	updateLocalStreams: function(streams){
- 		console.log(streams);
- 		this.setState({localStreams: streams});
- 	},
- 	updatePeers: function(peers){
- 		this.setState({peers:peers});
- 	},*/
-	update: function update() {
-		this.setState({ liveLab: this.liveLab });
-	},
-	render: function render() {
-		if (this.state.liveLab == null) {
-			return React.createElement(Landing, { dimensions: this.state.dimensions });
-		} else {
-			return React.createElement(ControlPanel, { dimensions: this.state.dimensions, liveLab: this.state.liveLab });
-		}
-	}
-});
-
-},{"./ControlPanel.jsx":1,"./Landing.jsx":2,"./LiveLab.js":3,"react":215}],6:[function(require,module,exports){
-'use strict';
-
-var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
-
-var React = require('react');
-var VideoContainer = require('./VideoContainer.jsx');
-var StreamControls = require('./StreamControls.jsx');
-
-module.exports = React.createClass({
-	displayName: 'exports',
-
-	getInitialState: function getInitialState() {
-		return { tracks: [] };
-	},
-	componentDidMount: function componentDidMount() {
-		// var tracks = this.props.stream.getTracks();
-		// this.setState({tracks: tracks});
-
-	},
-	render: function render() {
-		var w = Math.floor(this.props.dimensions.w / 3);
-		var h = w * 480 / 640;
-		var divStyle = {
-			width: w,
-			height: h,
-			position: "relative",
-			display: "inline-block"
-		};
-		var tracks = [];
-		if (this.props.handler) {
-			// if(this.props.handler.hasAudio){
-			// 	tracks.push(<AudioContainer {...this.props} w={w} h={h} />);
-			// }
-			if (this.props.handler.hasVideo) {
-				tracks.push(React.createElement(VideoContainer, _extends({}, this.props, { w: w, h: h })));
-			}
-			tracks.push(React.createElement(StreamControls, _extends({}, this.props, { w: w, h: h })));
-		}
-		return React.createElement(
-			'div',
-			{ style: divStyle },
-			' ',
-			tracks,
-			' '
-		);
-	}
-});
-
-},{"./StreamControls.jsx":7,"./VideoContainer.jsx":9,"react":215}],7:[function(require,module,exports){
-'use strict';
-
-var React = require('react');
-var ReactDOM = require('react-dom');
-var VideoContainer = require('./VideoContainer.jsx');
-
-module.exports = React.createClass({
-	displayName: 'exports',
-
-	getInitialState: function getInitialState() {
-		return { showSettings: false, showWindow: false, fullscreen: false };
-	},
-	showSettings: function showSettings() {
-		this.setState({ showSettings: this.state.showSettings ? false : true });
-	},
-	toggleFullscreen: function toggleFullscreen() {
-		var isFirefox = typeof InstallTrigger !== 'undefined';
-		var isChrome = !!window.chrome && !!window.chrome.webstore;
-		if (this.state.fullscreen) {} else {
-			if (isFirefox == true) {
-				this.childWindow.document.getElementsByTagName('video')[0].mozRequestFullScreen();
-			}
-			if (isChrome == true) {
-				this.childWindow.document.getElementsByTagName('video')[0].webkitRequestFullScreen();
-			}
-			this.setState({ fullscreen: true });
-		}
-	},
-	showWindow: function showWindow() {
-		var peerWindow = window.open(null, "new window", 'popup');
-		var isFirefox = typeof InstallTrigger !== 'undefined';
-		var isChrome = !!window.chrome && !!window.chrome.webstore;
-		if (isChrome) {
-			var container = peerWindow.document.createElement("div");
-			peerWindow.document.body.appendChild(container);
-			ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, fullscreen: this.state.fullscreen, muted: true }), container);
-		}
-		if (isFirefox) {
-			peerWindow.onload = function () {
-				var container = peerWindow.document.createElement("div");
-				peerWindow.document.body.appendChild(container);
-				ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, fullscreen: this.state.fullscreen, muted: true }), container);
-			}.bind(this);
-		}
-		/* Detect when window is closed by user */
-		peerWindow.onbeforeunload = function () {
-			console.log("closing window");
-			this.setState({ showWindow: false, fullscreen: false });
-		}.bind(this);
-		this.childWindow = peerWindow;
-		this.setState({ showWindow: true });
-	},
-	render: function render() {
-
-		var controls = [];
-		if (this.props.handler.hasAudio) {
-			//controls.push(<i className="fa fa-volume-up stream-controls"></i>);
-			if (this.props.handler.muted) {
-				controls.push(React.createElement('i', { className: 'fa fa-volume-off stream-controls', onClick: this.props.handler.toggleMute.bind(this.props.handler) }));
-			} else {
-				controls.push(React.createElement('i', { className: 'fa fa-volume-up stream-controls', onClick: this.props.handler.toggleMute.bind(this.props.handler) }));
-			}
-		}
-		if (this.props.handler.hasVideo) {
-			if (!this.state.showWindow) {
-				controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls', onClick: this.showWindow }));
-			} else {
-				controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls selected', onClick: this.showWindow }));
-				controls.push(React.createElement('i', { className: 'fa fa-expand stream-controls', onClick: this.toggleFullscreen }));
-			}
-		}
-		controls.push(React.createElement('i', { className: 'fa fa-cog stream-controls', onClick: this.showSettings }));
-
-		var settings = [];
-		if (this.state.showSettings) {
-			settings = React.createElement(
-				'div',
-				null,
-				' SETTINGS '
-			);
-		}
-		var divStyle = {
-			position: "absolute",
-			background: "rgba(0, 0, 0, 0.4)",
-			bottom: "0px",
-			width: "100%",
-			textAlign: "right"
-		};
-		return React.createElement(
-			'div',
-			{ style: divStyle },
-			controls,
-			settings
-		);
-	}
-});
-
-},{"./VideoContainer.jsx":9,"react":215,"react-dom":73}],8:[function(require,module,exports){
-"use strict";
-
-/* class to process stream, including:
-create webAudio node*/
-
-function StreamHandler(peer, context, update, parent) {
-  console.log("STREAM PROCESSING", peer);
-  this.stream = peer.stream;
-  this.tracks = peer.stream.getTracks();
-  this.hasAudio = false;
-  this.hasVideo = false;
-  this.context = context;
-  this.volume = 1.0;
-  this.muted = true;
-  console.log("UPDATE", update);
-  this.update = update.bind(parent);
-  /* Check whether stream contains video or audio or both*/
-  for (var i = 0; i < this.tracks.length; i++) {
-    if (this.tracks[i].kind == "audio") this.hasAudio = true;
-    if (this.tracks[i].kind == "video") this.hasVideo = true;
-  }
-  peer.handler = this;
-
-  if (this.hasAudio) this.connectToWebAudio();
-  if (peer.hasOwnProperty.sid) {
-    //this.toggleMute();
-  }
-}
-
-StreamHandler.prototype.connectToWebAudio = function () {
-  var input = this.context.createMediaStreamSource(this.stream);
-
-  var output = this.context.createMediaStreamDestination();
-  input.connect(output);
-
-  var audio = new Audio();
-  audio.src = URL.createObjectURL(output.stream);
-
-  audio.volume = this.volume;
-  audio.muted = true;
-  audio.play();
-  this.audio = audio;
-  console.log("AUDIO", audio.muted);
-};
-
-StreamHandler.prototype.toggleMute = function () {
-  this.muted = this.muted ? false : true;
-  this.audio.muted = this.muted;
-  console.log("UPDATE", this.update);
-  this.update();
-};
-
-StreamHandler.prototype.setAudioSink = function (id) {};
-
-StreamHandler.prototype.setVolume = function (vol) {};
-
-module.exports = StreamHandler;
-
-},{}],9:[function(require,module,exports){
-"use strict";
-
-var React = require('react');
-
-module.exports = React.createClass({
-	displayName: "exports",
-
-
-	render: function render() {
-
-		return React.createElement("video", { autoPlay: true, muted: this.props.muted, width: "100%", ref: "vid", src: window.URL.createObjectURL(this.props.stream) });
-	}
-});
-
-},{"react":215}],10:[function(require,module,exports){
-module.exports={
-	"room": null,
-	"rtc": {
-       "autoRequestMedia": true,
-       "media": {
-         "audio": {
-           "optional": [
-          {"googAutoGainControl": true}, 
-           {"googAutoGainControl2": true}, 
-           {"googEchoCancellation": true},
-           {"googEchoCancellation2": true},
-           {"googNoiseSuppression": true},
-           {"googNoiseSuppression2": true},
-           {"googHighpassFilter": true},
-           {"googTypingNoiseDetection": true},
-           {"googAudioMirroring": true}
-           ]
-         },
-         "video": {
-           "optional": [
-           ]
-         }
-       }
-     }
-	
-}
-},{}],11:[function(require,module,exports){
-'use strict';
-
-// main.js
-var React = require('react');
-var ReactDOM = require('react-dom');
-var Main = require('./Main.jsx');
-
-ReactDOM.render(React.createElement(Main, null), document.body);
-
-},{"./Main.jsx":5,"react":215,"react-dom":73}],12:[function(require,module,exports){
+},{"./../config.json":8,"./LiveLabRTC.js":3,"./StreamHandler.js":4}],2:[function(require,module,exports){
 'use strict';
 
 /* adapted from https://github.com/otalk/localmedia to permit using multiple audio and video streams per user and configuring input source*/
@@ -1010,7 +258,7 @@ LocalMedia.prototype.start = function (mediaConstraints, cb) {
 };
 
 /*dynamically add streams*/
-LocalMedia.prototype.addStream = function (audioSource, videoSource, mediaConstraints) {
+LocalMedia.prototype.addStream = function (mediaConstraints) {
     var self = this;
     var constraints = mediaConstraints || this.config.media;
     // var constraints = this.config.media;
@@ -1020,8 +268,10 @@ LocalMedia.prototype.addStream = function (audioSource, videoSource, mediaConstr
     // };
     getUserMedia(constraints, function (err, stream) {
         console.log(stream);
-        self.localStreams.push(stream);
-        self.emit('additionalStream', stream);
+        var streamObj = {};
+        streamObj.stream = stream;
+        self.localStreams.push(streamObj);
+        self.emit('additionalStream', streamObj);
     });
 };
 
@@ -1243,12 +493,357 @@ Object.defineProperty(LocalMedia.prototype, 'localScreen', {
 
 module.exports = LocalMedia;
 
-},{"getscreenmedia":45,"getusermedia":57,"hark":68,"mediastream-gain":69,"mockconsole":71,"util":286,"webrtcsupport":280,"wildemitter":281}],13:[function(require,module,exports){
+},{"getscreenmedia":49,"getusermedia":61,"hark":72,"mediastream-gain":74,"mockconsole":76,"util":290,"webrtcsupport":284,"wildemitter":285}],3:[function(require,module,exports){
+'use strict';
+
+var WebRTC = require('./webrtc');
+var WildEmitter = require('wildemitter');
+var webrtcSupport = require('webrtcsupport');
+var SocketIoConnection = require('./../libs/socketioconnection');
+
+function LiveLabRTC(opts) {
+    var self = this;
+    // var options = opts || {};
+    var item, connection;
+
+    // We also allow a 'logger' option. It can be any object that implements
+    // log, warn, and error methods.
+    // We log nothing by default, following "the rule of silence":
+    // http://www.linfo.org/rule_of_silence.html
+    this.logger = console;
+
+    // set our config from options
+    this.config = opts;
+
+    // attach detected support for convenience
+    this.capabilities = webrtcSupport;
+
+    // call WildEmitter constructor
+    WildEmitter.call(this);
+
+    var connection = this.connection = new SocketIoConnection(this.config);
+
+    connection.on('connect', function () {
+        self.emit('connectionReady', connection.getSessionid());
+        self.emit('readyToCall', self.connection.getSessionid());
+    });
+
+    connection.on('message', function (message) {
+        var peers = self.webrtc.getPeers(message.from, message.roomType);
+        var peer;
+
+        if (message.type === 'offer') {
+            if (peers.length) {
+                peers.forEach(function (p) {
+                    if (p.sid == message.sid) peer = p;
+                });
+            }
+
+            if (!peer) {
+                peer = self.webrtc.createPeer({
+                    id: message.from,
+                    sid: message.sid,
+                    type: message.roomType,
+                    enableDataChannels: true,
+                    sharemyscreen: message.roomType === 'screen' && !message.broadcaster,
+                    broadcaster: message.roomType === 'screen' && !message.broadcaster ? self.connection.getSessionid() : null
+                });
+                self.emit('createdPeer', peer);
+            }
+            peer.handleMessage(message);
+        } else if (peers.length) {
+            peers.forEach(function (peer) {
+                if (message.sid) {
+                    if (peer.sid === message.sid) {
+                        peer.handleMessage(message);
+                    }
+                } else {
+                    peer.handleMessage(message);
+                }
+            });
+        }
+    });
+
+    connection.on('remove', function (room) {
+        if (room.id !== self.connection.getSessionid()) {
+            self.webrtc.removePeers(room.id, room.type);
+        }
+    });
+
+    // instantiate our main WebRTC helper
+    // using same logger from logic here
+    opts.logger = this.logger;
+    opts.debug = false;
+    this.webrtc = new WebRTC(opts);
+
+    // attach a few methods from underlying lib to simple.
+    ['mute', 'unmute', 'pauseVideo', 'resumeVideo', 'pause', 'resume', 'sendToAll', 'sendDirectlyToAll', 'getPeers', 'sendDirectly'].forEach(function (method) {
+        self[method] = self.webrtc[method].bind(self.webrtc);
+    });
+
+    // proxy events from WebRTC
+    this.webrtc.on('*', function () {
+        self.emit.apply(self, arguments);
+    });
+
+    // log all events in debug mode
+    /* if (config.debug) {
+         this.on('*', this.logger.log.bind(this.logger, 'LiveLabRTC event:'));
+     }*/
+
+    this.webrtc.on('message', function (payload) {
+        self.connection.emit('message', payload);
+    });
+
+    /* connection.on('stunservers', function (args) {
+         // resets/overrides the config
+         self.webrtc.config.peerConnectionConfig.iceServers = args;
+         self.emit('stunservers', args);
+     });
+     connection.on('turnservers', function (args) {
+         // appends to the config
+         self.webrtc.config.peerConnectionConfig.iceServers = self.webrtc.config.peerConnectionConfig.iceServers.concat(args);
+         self.emit('turnservers', args);
+     });*/
+
+    this.webrtc.on('iceFailed', function (peer) {
+        // local ice failure
+    });
+    this.webrtc.on('connectivityError', function (peer) {
+        // remote ice failure
+    });
+
+    this.webrtc.on('additionalStream', function (streamObj) {
+        /*add new stream to peer connection object */
+        // console.log("ADDING STREAMS");
+        self.webrtc.peers.forEach(function (peer) {
+            //   console.log("ADDING STREAMS");
+            peer.addStream(streamObj.stream);
+        });
+    });
+
+    if (this.config.autoRequestMedia) this.startLocalVideo();
+}
+
+LiveLabRTC.prototype = Object.create(WildEmitter.prototype, {
+    constructor: {
+        value: LiveLabRTC
+    }
+});
+
+LiveLabRTC.prototype.leaveRoom = function () {
+    if (this.roomName) {
+        this.connection.emit('leave');
+        while (this.webrtc.peers.length) {
+            this.webrtc.peers.shift().end();
+        }
+        if (this.getLocalScreen()) {
+            this.stopScreenShare();
+        }
+        this.emit('leftRoom', this.roomName);
+        this.roomName = undefined;
+    }
+};
+
+LiveLabRTC.prototype.addStream = function (constraints) {
+    this.webrtc.addStream(constraints);
+};
+
+LiveLabRTC.prototype.disconnect = function () {
+    this.connection.disconnect();
+    delete this.connection;
+};
+
+LiveLabRTC.prototype.handlePeerStreamAdded = function (peer) {
+    var self = this;
+
+    this.emit('videoAdded', peer);
+};
+
+LiveLabRTC.prototype.joinRoom = function (name, cb) {
+    var self = this;
+    this.roomName = name;
+    console.log("JOINIGN ROOM", name);
+    this.connection.emit('join', name, function (err, roomDescription) {
+        console.log('join CB', err, roomDescription);
+
+        if (err) {
+            self.emit('error', err);
+        } else {
+            var id, client, type, peer;
+            for (id in roomDescription.clients) {
+                client = roomDescription.clients[id];
+                for (type in client) {
+                    if (client[type]) {
+                        peer = self.webrtc.createPeer({
+                            id: id,
+                            type: type,
+                            enableDataChannels: true,
+                            receiveMedia: {
+                                offerToReceiveAudio: true,
+                                offerToReceiveVideo: true
+                            }
+                        });
+                        self.emit('createdPeer', peer);
+                        peer.start();
+                    }
+                }
+            }
+        }
+
+        if (cb) cb(err, roomDescription);
+        self.emit('joinedRoom', name);
+    });
+};
+
+LiveLabRTC.prototype.getEl = function (idOrEl) {
+    if (typeof idOrEl === 'string') {
+        return document.getElementById(idOrEl);
+    } else {
+        return idOrEl;
+    }
+};
+
+LiveLabRTC.prototype.startLocalVideo = function () {
+    var self = this;
+    this.webrtc.startLocalMedia(this.config.media, function (err, stream) {
+        if (err) {
+            self.emit('localMediaError', err);
+        } else {
+            //attachMediaStream(stream, self.getLocalVideoContainer(), self.config.localVideo);
+        }
+    });
+};
+
+LiveLabRTC.prototype.stopLocalVideo = function () {
+    this.webrtc.stopLocalMedia();
+};
+
+LiveLabRTC.prototype.shareScreen = function (cb) {
+    this.webrtc.startScreenShare(cb);
+};
+
+// LiveLabRTC.prototype.testReadiness = function () {
+//     var self = this;
+//     if (this.sessionReady) {
+//         if (!this.config.media.video && !this.config.media.audio) {
+//             self.emit('readyToCall', self.connection.getSessionid());
+//         } else if (this.webrtc.localStreams.length > 0) {
+//             self.emit('readyToCall', self.connection.getSessionid());
+//         }
+//     }
+// };
+
+LiveLabRTC.prototype.createRoom = function (name, cb) {
+    this.roomName = name;
+    if (arguments.length === 2) {
+        this.connection.emit('create', name, cb);
+    } else {
+        this.connection.emit('create', name);
+    }
+};
+
+LiveLabRTC.prototype.sendFile = function () {
+    if (!webrtcSupport.dataChannel) {
+        return this.emit('error', new Error('DataChannelNotSupported'));
+    }
+};
+
+module.exports = LiveLabRTC;
+
+},{"./../libs/socketioconnection":21,"./webrtc":7,"webrtcsupport":284,"wildemitter":285}],4:[function(require,module,exports){
+"use strict";
+
+/* class to process stream, including:
+create webAudio node*/
+
+function StreamHandler(peer, context, parent) {
+  // console.log("STREAM PROCESSING", peer);
+  this.stream = peer.stream;
+  this.tracks = peer.stream.getTracks();
+  this.hasAudio = false;
+  this.hasVideo = false;
+  this.context = context;
+  this.volume = 1.0;
+  this.muted = true;
+  this.parent = parent;
+
+  /* Check whether stream contains video or audio or both*/
+  for (var i = 0; i < this.tracks.length; i++) {
+    if (this.tracks[i].kind == "audio") this.hasAudio = true;
+    if (this.tracks[i].kind == "video") this.hasVideo = true;
+  }
+  peer.handler = this;
+
+  if (this.hasAudio) this.connectToWebAudio();
+  if (peer.hasOwnProperty.sid) {
+    //this.toggleMute();
+  }
+}
+
+StreamHandler.prototype.connectToWebAudio = function () {
+  var input = this.context.createMediaStreamSource(this.stream);
+
+  var output = this.context.createMediaStreamDestination();
+  input.connect(output);
+
+  var audio = new Audio();
+  audio.src = URL.createObjectURL(output.stream);
+
+  audio.volume = this.volume;
+  audio.muted = true;
+  audio.play();
+
+  this.audio = audio;
+  var id = audio.sinkId;
+  this.sinkId = null;
+  console.log("AUDIO", id);
+};
+
+StreamHandler.prototype.toggleMute = function () {
+  this.muted = this.muted ? false : true;
+  this.audio.muted = this.muted;
+  //console.log("UPDATE", this.update);
+  this.parent.update();
+};
+
+StreamHandler.prototype.setOutputSink = function (id) {
+  // attachSinkId(this.audio, id, function(){
+  //   this.update();
+  // }.bind(this));
+  this.attachSinkId(id);
+};
+
+StreamHandler.prototype.setVolume = function (vol) {};
+
+// Attach audio output device to the provided media element using the deviceId.
+StreamHandler.prototype.attachSinkId = function (sinkId) {
+  var element = this.audio;
+  var self = this;
+  if (typeof element.sinkId !== 'undefined') {
+    element.setSinkId(sinkId).then(function () {
+      console.log('Success, audio output device attached: ' + sinkId + ' to ' + 'element with ' + element.id + ' as source.');
+      self.parent.update();
+    }).catch(function (error) {
+      var errorMessage = error;
+      if (error.name === 'SecurityError') {
+        errorMessage = 'You need to use HTTPS for selecting audio output ' + 'device: ' + error;
+      }
+      console.error(errorMessage);
+      // Jump back to first output device in the list as it's the default.
+    });
+  } else {
+    console.warn('Browser does not support output device selection.');
+  }
+};
+module.exports = StreamHandler;
+
+},{}],5:[function(require,module,exports){
 'use strict';
 
 var util = require('util');
 var webrtc = require('webrtcsupport');
-var PeerConnection = require('rtcpeerconnection');
+var PeerConnection = require('./rtcpeerconnection.js');
 var WildEmitter = require('wildemitter');
 var FileTransfer = require('filetransfer');
 
@@ -1268,7 +863,9 @@ function Peer(options) {
     this.oneway = options.oneway || false;
     this.sharemyscreen = options.sharemyscreen || false;
     this.browserPrefix = options.prefix;
-    this.stream = options.stream;
+    this.streams = [];
+
+    // this.stream = options.stream;
     this.enableDataChannels = options.enableDataChannels === undefined ? this.parent.config.enableDataChannels : options.enableDataChannels;
     this.receiveMedia = options.receiveMedia || this.parent.config.receiveMedia;
     this.channels = {};
@@ -1283,6 +880,14 @@ function Peer(options) {
         if (self.parent.config.nick) offer.nick = self.parent.config.nick;
         self.send('offer', offer);
     });
+
+    /* when new streams are added, renegotiation is needed*/
+    this.pc.on('negotiationNeeded', function (e) {
+
+        this.pc.offer(this.receiveMedia, function (err, sessionDescription) {
+            //self.send('offer', sessionDescription);
+        });
+    }.bind(this));
     this.pc.on('answer', function (answer) {
         if (self.parent.config.nick) answer.nick = self.parent.config.nick;
         self.send('answer', answer);
@@ -1290,11 +895,8 @@ function Peer(options) {
     this.pc.on('addStream', this.handleRemoteStreamAdded.bind(this));
     this.pc.on('addChannel', this.handleDataChannelAdded.bind(this));
     this.pc.on('removeStream', this.handleStreamRemoved.bind(this));
-    // Just fire negotiation needed events for now
-    // When browser re-negotiation handling seems to work
-    // we can use this as the trigger for starting the offer/answer process
-    // automatically. We'll just leave it be for now while this stabalizes.
-    this.pc.on('negotiationNeeded', this.emit.bind(this, 'negotiationNeeded'));
+    this.pc.on('addTrack', this.handleRemoteTrackAdded.bind(this));
+
     this.pc.on('iceConnectionStateChange', this.emit.bind(this, 'iceConnectionStateChange'));
     this.pc.on('iceConnectionStateChange', function () {
         switch (self.pc.iceConnectionState) {
@@ -1313,11 +915,11 @@ function Peer(options) {
 
     // handle screensharing/broadcast mode
     if (options.type === 'screen') {
-        if (this.parent.localScreen && this.sharemyscreen) {
-            this.logger.log('adding local screen stream to peer connection');
-            this.pc.addStream(this.parent.localScreen);
-            this.broadcaster = options.broadcaster;
-        }
+        // if (this.parent.localScreen && this.sharemyscreen) {
+        //     this.logger.log('adding local screen stream to peer connection');
+        //     this.pc.addStream(this.parent.localScreen);
+        //     this.broadcaster = options.broadcaster;
+        // }
     } else {
         this.parent.localStreams.forEach(function (stream) {
             self.pc.addStream(stream.stream);
@@ -1389,6 +991,11 @@ Peer.prototype.handleMessage = function (message) {
     }
 };
 
+/* add new local stream to peer connection object */
+Peer.prototype.addStream = function (stream) {
+    console.log("add stream to peer");
+    this.pc.addStream(stream);
+};
 // send via signalling channel
 Peer.prototype.send = function (messageType, payload) {
     var message = {
@@ -1455,6 +1062,14 @@ Peer.prototype.onIceCandidate = function (candidate) {
     }
 };
 
+/*Add track experimental feature: https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/addTrack*/
+Peer.prototype.addTrack = function (stream) {
+    var tracks = stream.getTrack();
+    for (var i = 0; i < tracks.length; i++) {
+        this.pc.addTrack(tracks[i], this.streams[0]);
+    }
+};
+
 Peer.prototype.start = function () {
     var self = this;
 
@@ -1483,19 +1098,27 @@ Peer.prototype.end = function () {
     this.handleStreamRemoved();
 };
 
+Peer.prototype.handleRemoteTrackAdded = function (event) {
+    console.log("REMOTE TRACK ADDED", event);
+};
+
 Peer.prototype.handleRemoteStreamAdded = function (event) {
-    var self = this;
-    if (this.stream) {
-        this.logger.warn('Already have a remote stream');
-    } else {
-        this.stream = event.stream;
-        // FIXME: addEventListener('ended', ...) would be nicer
-        // but does not work in firefox
-        this.stream.onended = function () {
-            self.end();
-        };
-        this.parent.emit('peerStreamAdded', this);
-    }
+    // var self = this;
+    console.log("REMOTE STREAM ADDED ", event.stream);
+    // if (this.stream) {
+    //     this.logger.warn('Already have a remote stream');
+    // // } else {
+    var streamObj = {};
+    streamObj.stream = event.stream;
+    this.streams.push(streamObj);
+
+    // FIXME: addEventListener('ended', ...) would be nicer
+    // but does not work in firefox
+    // event.stream.onended = function (this) {
+    //    // self.end();
+    // };
+    this.parent.emit('peerStreamAdded', streamObj);
+    // }
 };
 
 Peer.prototype.handleStreamRemoved = function () {
@@ -1532,34 +1155,846 @@ Peer.prototype.sendFile = function (file) {
 
 module.exports = Peer;
 
-},{"filetransfer":44,"rtcpeerconnection":216,"util":286,"webrtcsupport":280,"wildemitter":281}],14:[function(require,module,exports){
+},{"./rtcpeerconnection.js":6,"filetransfer":48,"util":290,"webrtcsupport":284,"wildemitter":285}],6:[function(require,module,exports){
 'use strict';
 
-var io = require('socket.io-client');
+var util = require('util');
+var SJJ = require('sdp-jingle-json');
+var WildEmitter = require('wildemitter');
+var Peerconn = require('traceablepeerconnection');
+var adapter = require('webrtc-adapter');
+var cloneDeep = require('lodash.clonedeep');
 
-function SocketIoConnection(config) {
-    this.connection = io.connect(config.url, config.socketio);
+function PeerConnection(config, constraints) {
+    var self = this;
+    var item;
+    WildEmitter.call(this);
+
+    config = config || {};
+    config.iceServers = config.iceServers || [];
+
+    var detectedBrowser = adapter.browserDetails.browser;
+
+    // make sure this only gets enabled in Google Chrome
+    // EXPERIMENTAL FLAG, might get removed without notice
+    this.enableChromeNativeSimulcast = false;
+    if (constraints && constraints.optional && detectedBrowser === 'chrome' && navigator.appVersion.match(/Chromium\//) === null) {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.enableChromeNativeSimulcast) {
+                self.enableChromeNativeSimulcast = true;
+            }
+        });
+    }
+
+    // EXPERIMENTAL FLAG, might get removed without notice
+    this.enableMultiStreamHacks = false;
+    if (constraints && constraints.optional && detectedBrowser === 'chrome') {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.enableMultiStreamHacks) {
+                self.enableMultiStreamHacks = true;
+            }
+        });
+    }
+    // EXPERIMENTAL FLAG, might get removed without notice
+    this.restrictBandwidth = 0;
+    if (constraints && constraints.optional) {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.andyetRestrictBandwidth) {
+                self.restrictBandwidth = constraint.andyetRestrictBandwidth;
+            }
+        });
+    }
+
+    // EXPERIMENTAL FLAG, might get removed without notice
+    // bundle up ice candidates, only works for jingle mode
+    // number > 0 is the delay to wait for additional candidates
+    // ~20ms seems good
+    this.batchIceCandidates = 0;
+    if (constraints && constraints.optional) {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.andyetBatchIce) {
+                self.batchIceCandidates = constraint.andyetBatchIce;
+            }
+        });
+    }
+    this.batchedIceCandidates = [];
+
+    // EXPERIMENTAL FLAG, might get removed without notice
+    // this attemps to strip out candidates with an already known foundation
+    // and type -- i.e. those which are gathered via the same TURN server
+    // but different transports (TURN udp, tcp and tls respectively)
+    if (constraints && constraints.optional && detectedBrowser === 'chrome') {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.andyetFasterICE) {
+                self.eliminateDuplicateCandidates = constraint.andyetFasterICE;
+            }
+        });
+    }
+    // EXPERIMENTAL FLAG, might get removed without notice
+    // when using a server such as the jitsi videobridge we don't need to signal
+    // our candidates
+    if (constraints && constraints.optional) {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.andyetDontSignalCandidates) {
+                self.dontSignalCandidates = constraint.andyetDontSignalCandidates;
+            }
+        });
+    }
+
+    // EXPERIMENTAL FLAG, might get removed without notice
+    this.assumeSetLocalSuccess = false;
+    if (constraints && constraints.optional) {
+        constraints.optional.forEach(function (constraint) {
+            if (constraint.andyetAssumeSetLocalSuccess) {
+                self.assumeSetLocalSuccess = constraint.andyetAssumeSetLocalSuccess;
+            }
+        });
+    }
+
+    // EXPERIMENTAL FLAG, might get removed without notice
+    // working around https://bugzilla.mozilla.org/show_bug.cgi?id=1087551
+    // pass in a timeout for this
+    if (detectedBrowser === 'firefox') {
+        if (constraints && constraints.optional) {
+            this.wtFirefox = 0;
+            constraints.optional.forEach(function (constraint) {
+                if (constraint.andyetFirefoxMakesMeSad) {
+                    self.wtFirefox = constraint.andyetFirefoxMakesMeSad;
+                    if (self.wtFirefox > 0) {
+                        self.firefoxcandidatebuffer = [];
+                    }
+                }
+            });
+        }
+    }
+
+    this.pc = new Peerconn(config, constraints);
+
+    this.getLocalStreams = this.pc.getLocalStreams.bind(this.pc);
+    this.getRemoteStreams = this.pc.getRemoteStreams.bind(this.pc);
+    this.addStream = this.pc.addStream.bind(this.pc);
+    this.removeStream = this.pc.removeStream.bind(this.pc);
+
+    // proxy events
+    this.pc.on('*', function () {
+        self.emit.apply(self, arguments);
+    });
+
+    // proxy some events directly
+    this.pc.onremovestream = this.emit.bind(this, 'removeStream');
+    this.pc.onaddstream = this.emit.bind(this, 'addStream');
+    this.pc.onnegotiationneeded = this.emit.bind(this, 'negotiationNeeded');
+    this.pc.oniceconnectionstatechange = this.emit.bind(this, 'iceConnectionStateChange');
+    this.pc.onsignalingstatechange = this.emit.bind(this, 'signalingStateChange');
+
+    // handle ice candidate and data channel events
+    this.pc.onicecandidate = this._onIce.bind(this);
+    this.pc.ondatachannel = this._onDataChannel.bind(this);
+
+    this.localDescription = {
+        contents: []
+    };
+    this.remoteDescription = {
+        contents: []
+    };
+
+    this.config = {
+        debug: false,
+        sid: '',
+        isInitiator: true,
+        sdpSessionID: Date.now(),
+        useJingle: false
+    };
+
+    this.iceCredentials = {
+        local: {},
+        remote: {}
+    };
+
+    // apply our config
+    for (item in config) {
+        this.config[item] = config[item];
+    }
+
+    if (this.config.debug) {
+        this.on('*', function () {
+            var logger = config.logger || console;
+            logger.log('PeerConnection event:', arguments);
+        });
+    }
+    this.hadLocalStunCandidate = false;
+    this.hadRemoteStunCandidate = false;
+    this.hadLocalRelayCandidate = false;
+    this.hadRemoteRelayCandidate = false;
+
+    this.hadLocalIPv6Candidate = false;
+    this.hadRemoteIPv6Candidate = false;
+
+    // keeping references for all our data channels
+    // so they dont get garbage collected
+    // can be removed once the following bugs have been fixed
+    // https://crbug.com/405545
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=964092
+    // to be filed for opera
+    this._remoteDataChannels = [];
+    this._localDataChannels = [];
+
+    this._candidateBuffer = [];
 }
 
-SocketIoConnection.prototype.on = function (ev, fn) {
-    this.connection.on(ev, fn);
+util.inherits(PeerConnection, WildEmitter);
+
+Object.defineProperty(PeerConnection.prototype, 'signalingState', {
+    get: function get() {
+        return this.pc.signalingState;
+    }
+});
+Object.defineProperty(PeerConnection.prototype, 'iceConnectionState', {
+    get: function get() {
+        return this.pc.iceConnectionState;
+    }
+});
+
+PeerConnection.prototype._role = function () {
+    return this.isInitiator ? 'initiator' : 'responder';
 };
 
-SocketIoConnection.prototype.emit = function () {
-    this.connection.emit.apply(this.connection, arguments);
+// Add a stream to the peer connection object
+PeerConnection.prototype.addStream = function (stream) {
+    this.localStream = stream;
+    this.pc.addStream(stream);
 };
 
-SocketIoConnection.prototype.getSessionid = function () {
-    return this.connection.id;
+// helper function to check if a remote candidate is a stun/relay
+// candidate or an ipv6 candidate
+PeerConnection.prototype._checkLocalCandidate = function (candidate) {
+    var cand = SJJ.toCandidateJSON(candidate);
+    if (cand.type == 'srflx') {
+        this.hadLocalStunCandidate = true;
+    } else if (cand.type == 'relay') {
+        this.hadLocalRelayCandidate = true;
+    }
+    if (cand.ip.indexOf(':') != -1) {
+        this.hadLocalIPv6Candidate = true;
+    }
 };
 
-SocketIoConnection.prototype.disconnect = function () {
-    return this.connection.disconnect();
+// helper function to check if a remote candidate is a stun/relay
+// candidate or an ipv6 candidate
+PeerConnection.prototype._checkRemoteCandidate = function (candidate) {
+    var cand = SJJ.toCandidateJSON(candidate);
+    if (cand.type == 'srflx') {
+        this.hadRemoteStunCandidate = true;
+    } else if (cand.type == 'relay') {
+        this.hadRemoteRelayCandidate = true;
+    }
+    if (cand.ip.indexOf(':') != -1) {
+        this.hadRemoteIPv6Candidate = true;
+    }
 };
 
-module.exports = SocketIoConnection;
+// Init and add ice candidate object with correct constructor
+PeerConnection.prototype.processIce = function (update, cb) {
+    cb = cb || function () {};
+    var self = this;
 
-},{"socket.io-client":223}],15:[function(require,module,exports){
+    // ignore any added ice candidates to avoid errors. why does the
+    // spec not do this?
+    if (this.pc.signalingState === 'closed') return cb();
+
+    if (update.contents || update.jingle && update.jingle.contents) {
+        var contentNames = this.remoteDescription.contents.map(function (c) {
+            return c.name;
+        });
+        var contents = update.contents || update.jingle.contents;
+
+        contents.forEach(function (content) {
+            var transport = content.transport || {};
+            var candidates = transport.candidates || [];
+            var mline = contentNames.indexOf(content.name);
+            var mid = content.name;
+            var remoteContent = self.remoteDescription.contents.find(function (c) {
+                return c.name === content.name;
+            });
+
+            // process candidates as a callback, in case we need to
+            // update ufrag and pwd with offer/answer
+            var processCandidates = function processCandidates() {
+                candidates.forEach(function (candidate) {
+                    var iceCandidate = SJJ.toCandidateSDP(candidate) + '\r\n';
+                    self.pc.addIceCandidate(new RTCIceCandidate({
+                        candidate: iceCandidate,
+                        sdpMLineIndex: mline,
+                        sdpMid: mid
+                    }), function () {
+                        // well, this success callback is pretty meaningless
+                    }, function (err) {
+                        self.emit('error', err);
+                    });
+                    self._checkRemoteCandidate(iceCandidate);
+                });
+                cb();
+            };
+
+            if (self.iceCredentials.remote[content.name] && transport.ufrag && self.iceCredentials.remote[content.name].ufrag !== transport.ufrag) {
+                if (remoteContent) {
+                    remoteContent.transport.ufrag = transport.ufrag;
+                    remoteContent.transport.pwd = transport.pwd;
+                    var offer = {
+                        type: 'offer',
+                        jingle: self.remoteDescription
+                    };
+                    offer.sdp = SJJ.toSessionSDP(offer.jingle, {
+                        sid: self.config.sdpSessionID,
+                        role: self._role(),
+                        direction: 'incoming'
+                    });
+                    self.pc.setRemoteDescription(new RTCSessionDescription(offer), function () {
+                        processCandidates();
+                    }, function (err) {
+                        self.emit('error', err);
+                    });
+                } else {
+                    self.emit('error', 'ice restart failed to find matching content');
+                }
+            } else {
+                processCandidates();
+            }
+        });
+    } else {
+        // working around https://code.google.com/p/webrtc/issues/detail?id=3669
+        if (update.candidate && update.candidate.candidate.indexOf('a=') !== 0) {
+            update.candidate.candidate = 'a=' + update.candidate.candidate;
+        }
+
+        if (this.wtFirefox && this.firefoxcandidatebuffer !== null) {
+            // we cant add this yet due to https://bugzilla.mozilla.org/show_bug.cgi?id=1087551
+            if (this.pc.localDescription && this.pc.localDescription.type === 'offer') {
+                this.firefoxcandidatebuffer.push(update.candidate);
+                return cb();
+            }
+        }
+
+        self.pc.addIceCandidate(new RTCIceCandidate(update.candidate), function () {}, function (err) {
+            self.emit('error', err);
+        });
+        self._checkRemoteCandidate(update.candidate.candidate);
+        cb();
+    }
+};
+
+// Generate and emit an offer with the given constraints
+PeerConnection.prototype.offer = function (constraints, cb) {
+    var self = this;
+    var hasConstraints = arguments.length === 2;
+    var mediaConstraints = hasConstraints && constraints ? constraints : {
+        offerToReceiveAudio: 1,
+        offerToReceiveVideo: 1
+    };
+    cb = hasConstraints ? cb : constraints;
+    cb = cb || function () {};
+
+    if (this.pc.signalingState === 'closed') return cb('Already closed');
+
+    // Actually generate the offer
+    this.pc.createOffer(function (offer) {
+        // does not work for jingle, but jingle.js doesn't need
+        // this hack...
+        var expandedOffer = {
+            type: 'offer',
+            sdp: offer.sdp
+        };
+        if (self.assumeSetLocalSuccess) {
+            self.emit('offer', expandedOffer);
+            cb(null, expandedOffer);
+        }
+        self._candidateBuffer = [];
+        self.pc.setLocalDescription(offer, function () {
+            var jingle;
+            if (self.config.useJingle) {
+                jingle = SJJ.toSessionJSON(offer.sdp, {
+                    role: self._role(),
+                    direction: 'outgoing'
+                });
+                jingle.sid = self.config.sid;
+                self.localDescription = jingle;
+
+                // Save ICE credentials
+                jingle.contents.forEach(function (content) {
+                    var transport = content.transport || {};
+                    if (transport.ufrag) {
+                        self.iceCredentials.local[content.name] = {
+                            ufrag: transport.ufrag,
+                            pwd: transport.pwd
+                        };
+                    }
+                });
+
+                expandedOffer.jingle = jingle;
+            }
+            expandedOffer.sdp.split('\r\n').forEach(function (line) {
+                if (line.indexOf('a=candidate:') === 0) {
+                    self._checkLocalCandidate(line);
+                }
+            });
+
+            if (!self.assumeSetLocalSuccess) {
+                self.emit('offer', expandedOffer);
+                cb(null, expandedOffer);
+            }
+        }, function (err) {
+            self.emit('error', err);
+            cb(err);
+        });
+    }, function (err) {
+        self.emit('error', err);
+        cb(err);
+    }, mediaConstraints);
+};
+
+// Process an incoming offer so that ICE may proceed before deciding
+// to answer the request.
+PeerConnection.prototype.handleOffer = function (offer, cb) {
+    cb = cb || function () {};
+    var self = this;
+    offer.type = 'offer';
+    if (offer.jingle) {
+        if (this.enableChromeNativeSimulcast) {
+            offer.jingle.contents.forEach(function (content) {
+                if (content.name === 'video') {
+                    content.application.googConferenceFlag = true;
+                }
+            });
+        }
+        if (this.enableMultiStreamHacks) {
+            // add a mixed video stream as first stream
+            offer.jingle.contents.forEach(function (content) {
+                if (content.name === 'video') {
+                    var sources = content.application.sources || [];
+                    if (sources.length === 0 || sources[0].ssrc !== "3735928559") {
+                        sources.unshift({
+                            ssrc: "3735928559", // 0xdeadbeef
+                            parameters: [{
+                                key: "cname",
+                                value: "deadbeef"
+                            }, {
+                                key: "msid",
+                                value: "mixyourfecintothis please"
+                            }]
+                        });
+                        content.application.sources = sources;
+                    }
+                }
+            });
+        }
+        if (self.restrictBandwidth > 0) {
+            if (offer.jingle.contents.length >= 2 && offer.jingle.contents[1].name === 'video') {
+                var content = offer.jingle.contents[1];
+                var hasBw = content.application && content.application.bandwidth && content.application.bandwidth.bandwidth;
+                if (!hasBw) {
+                    offer.jingle.contents[1].application.bandwidth = { type: 'AS', bandwidth: self.restrictBandwidth.toString() };
+                    offer.sdp = SJJ.toSessionSDP(offer.jingle, {
+                        sid: self.config.sdpSessionID,
+                        role: self._role(),
+                        direction: 'outgoing'
+                    });
+                }
+            }
+        }
+        // Save ICE credentials
+        offer.jingle.contents.forEach(function (content) {
+            var transport = content.transport || {};
+            if (transport.ufrag) {
+                self.iceCredentials.remote[content.name] = {
+                    ufrag: transport.ufrag,
+                    pwd: transport.pwd
+                };
+            }
+        });
+        offer.sdp = SJJ.toSessionSDP(offer.jingle, {
+            sid: self.config.sdpSessionID,
+            role: self._role(),
+            direction: 'incoming'
+        });
+        self.remoteDescription = offer.jingle;
+    }
+    offer.sdp.split('\r\n').forEach(function (line) {
+        if (line.indexOf('a=candidate:') === 0) {
+            self._checkRemoteCandidate(line);
+        }
+    });
+    self.pc.setRemoteDescription(new RTCSessionDescription(offer), function () {
+        cb();
+    }, cb);
+};
+
+// Answer an offer with audio only
+PeerConnection.prototype.answerAudioOnly = function (cb) {
+    var mediaConstraints = {
+        mandatory: {
+            OfferToReceiveAudio: true,
+            OfferToReceiveVideo: false
+        }
+    };
+    this._answer(mediaConstraints, cb);
+};
+
+// Answer an offer without offering to recieve
+PeerConnection.prototype.answerBroadcastOnly = function (cb) {
+    var mediaConstraints = {
+        mandatory: {
+            OfferToReceiveAudio: false,
+            OfferToReceiveVideo: false
+        }
+    };
+    this._answer(mediaConstraints, cb);
+};
+
+// Answer an offer with given constraints default is audio/video
+PeerConnection.prototype.answer = function (constraints, cb) {
+    var hasConstraints = arguments.length === 2;
+    var callback = hasConstraints ? cb : constraints;
+    var mediaConstraints = hasConstraints && constraints ? constraints : {
+        mandatory: {
+            OfferToReceiveAudio: true,
+            OfferToReceiveVideo: true
+        }
+    };
+
+    this._answer(mediaConstraints, callback);
+};
+
+// Process an answer
+PeerConnection.prototype.handleAnswer = function (answer, cb) {
+    cb = cb || function () {};
+    var self = this;
+    if (answer.jingle) {
+        answer.sdp = SJJ.toSessionSDP(answer.jingle, {
+            sid: self.config.sdpSessionID,
+            role: self._role(),
+            direction: 'incoming'
+        });
+        self.remoteDescription = answer.jingle;
+
+        // Save ICE credentials
+        answer.jingle.contents.forEach(function (content) {
+            var transport = content.transport || {};
+            if (transport.ufrag) {
+                self.iceCredentials.remote[content.name] = {
+                    ufrag: transport.ufrag,
+                    pwd: transport.pwd
+                };
+            }
+        });
+    }
+    answer.sdp.split('\r\n').forEach(function (line) {
+        if (line.indexOf('a=candidate:') === 0) {
+            self._checkRemoteCandidate(line);
+        }
+    });
+    self.pc.setRemoteDescription(new RTCSessionDescription(answer), function () {
+        if (self.wtFirefox) {
+            window.setTimeout(function () {
+                self.firefoxcandidatebuffer.forEach(function (candidate) {
+                    // add candidates later
+                    self.pc.addIceCandidate(new RTCIceCandidate(candidate), function () {}, function (err) {
+                        self.emit('error', err);
+                    });
+                    self._checkRemoteCandidate(candidate.candidate);
+                });
+                self.firefoxcandidatebuffer = null;
+            }, self.wtFirefox);
+        }
+        cb(null);
+    }, cb);
+};
+
+// Close the peer connection
+PeerConnection.prototype.close = function () {
+    this.pc.close();
+
+    this._localDataChannels = [];
+    this._remoteDataChannels = [];
+
+    this.emit('close');
+};
+
+// Internal code sharing for various types of answer methods
+PeerConnection.prototype._answer = function (constraints, cb) {
+    cb = cb || function () {};
+    var self = this;
+    if (!this.pc.remoteDescription) {
+        // the old API is used, call handleOffer
+        throw new Error('remoteDescription not set');
+    }
+
+    if (this.pc.signalingState === 'closed') return cb('Already closed');
+
+    self.pc.createAnswer(function (answer) {
+        var sim = [];
+        if (self.enableChromeNativeSimulcast) {
+            // native simulcast part 1: add another SSRC
+            answer.jingle = SJJ.toSessionJSON(answer.sdp, {
+                role: self._role(),
+                direction: 'outgoing'
+            });
+            if (answer.jingle.contents.length >= 2 && answer.jingle.contents[1].name === 'video') {
+                var groups = answer.jingle.contents[1].application.sourceGroups || [];
+                var hasSim = false;
+                groups.forEach(function (group) {
+                    if (group.semantics == 'SIM') hasSim = true;
+                });
+                if (!hasSim && answer.jingle.contents[1].application.sources.length) {
+                    var newssrc = JSON.parse(JSON.stringify(answer.jingle.contents[1].application.sources[0]));
+                    newssrc.ssrc = '' + Math.floor(Math.random() * 0xffffffff); // FIXME: look for conflicts
+                    answer.jingle.contents[1].application.sources.push(newssrc);
+
+                    sim.push(answer.jingle.contents[1].application.sources[0].ssrc);
+                    sim.push(newssrc.ssrc);
+                    groups.push({
+                        semantics: 'SIM',
+                        sources: sim
+                    });
+
+                    // also create an RTX one for the SIM one
+                    var rtxssrc = JSON.parse(JSON.stringify(newssrc));
+                    rtxssrc.ssrc = '' + Math.floor(Math.random() * 0xffffffff); // FIXME: look for conflicts
+                    answer.jingle.contents[1].application.sources.push(rtxssrc);
+                    groups.push({
+                        semantics: 'FID',
+                        sources: [newssrc.ssrc, rtxssrc.ssrc]
+                    });
+
+                    answer.jingle.contents[1].application.sourceGroups = groups;
+                    answer.sdp = SJJ.toSessionSDP(answer.jingle, {
+                        sid: self.config.sdpSessionID,
+                        role: self._role(),
+                        direction: 'outgoing'
+                    });
+                }
+            }
+        }
+        var expandedAnswer = {
+            type: 'answer',
+            sdp: answer.sdp
+        };
+        if (self.assumeSetLocalSuccess) {
+            // not safe to do when doing simulcast mangling
+            var copy = cloneDeep(expandedAnswer);
+            self.emit('answer', copy);
+            cb(null, copy);
+        }
+        self._candidateBuffer = [];
+        self.pc.setLocalDescription(answer, function () {
+            if (self.config.useJingle) {
+                var jingle = SJJ.toSessionJSON(answer.sdp, {
+                    role: self._role(),
+                    direction: 'outgoing'
+                });
+                jingle.sid = self.config.sid;
+                self.localDescription = jingle;
+                expandedAnswer.jingle = jingle;
+            }
+            if (self.enableChromeNativeSimulcast) {
+                // native simulcast part 2:
+                // signal multiple tracks to the receiver
+                // for anything in the SIM group
+                if (!expandedAnswer.jingle) {
+                    expandedAnswer.jingle = SJJ.toSessionJSON(answer.sdp, {
+                        role: self._role(),
+                        direction: 'outgoing'
+                    });
+                }
+                expandedAnswer.jingle.contents[1].application.sources.forEach(function (source, idx) {
+                    // the floor idx/2 is a hack that relies on a particular order
+                    // of groups, alternating between sim and rtx
+                    source.parameters = source.parameters.map(function (parameter) {
+                        if (parameter.key === 'msid') {
+                            parameter.value += '-' + Math.floor(idx / 2);
+                        }
+                        return parameter;
+                    });
+                });
+                expandedAnswer.sdp = SJJ.toSessionSDP(expandedAnswer.jingle, {
+                    sid: self.sdpSessionID,
+                    role: self._role(),
+                    direction: 'outgoing'
+                });
+            }
+            expandedAnswer.sdp.split('\r\n').forEach(function (line) {
+                if (line.indexOf('a=candidate:') === 0) {
+                    self._checkLocalCandidate(line);
+                }
+            });
+            if (!self.assumeSetLocalSuccess) {
+                var copy = cloneDeep(expandedAnswer);
+                self.emit('answer', copy);
+                cb(null, copy);
+            }
+        }, function (err) {
+            self.emit('error', err);
+            cb(err);
+        });
+    }, function (err) {
+        self.emit('error', err);
+        cb(err);
+    }, constraints);
+};
+
+// Internal method for emitting ice candidates on our peer object
+PeerConnection.prototype._onIce = function (event) {
+    var self = this;
+    if (event.candidate) {
+        if (this.dontSignalCandidates) return;
+        var ice = event.candidate;
+
+        var expandedCandidate = {
+            candidate: {
+                candidate: ice.candidate,
+                sdpMid: ice.sdpMid,
+                sdpMLineIndex: ice.sdpMLineIndex
+            }
+        };
+        this._checkLocalCandidate(ice.candidate);
+
+        var cand = SJJ.toCandidateJSON(ice.candidate);
+
+        var already;
+        var idx;
+        if (this.eliminateDuplicateCandidates && cand.type === 'relay') {
+            // drop candidates with same foundation, component
+            // take local type pref into account so we don't ignore udp
+            // ones when we know about a TCP one. unlikely but...
+            already = this._candidateBuffer.filter(function (c) {
+                return c.type === 'relay';
+            }).map(function (c) {
+                return c.foundation + ':' + c.component;
+            });
+            idx = already.indexOf(cand.foundation + ':' + cand.component);
+            // remember: local type pref of udp is 0, tcp 1, tls 2
+            if (idx > -1 && cand.priority >> 24 >= already[idx].priority >> 24) {
+                // drop it, same foundation with higher (worse) type pref
+                return;
+            }
+        }
+        if (this.config.bundlePolicy === 'max-bundle') {
+            // drop candidates which are duplicate for audio/video/data
+            // duplicate means same host/port but different sdpMid
+            already = this._candidateBuffer.filter(function (c) {
+                return cand.type === c.type;
+            }).map(function (cand) {
+                return cand.address + ':' + cand.port;
+            });
+            idx = already.indexOf(cand.address + ':' + cand.port);
+            if (idx > -1) return;
+        }
+        // also drop rtcp candidates since we know the peer supports RTCP-MUX
+        // this is a workaround until browsers implement this natively
+        if (this.config.rtcpMuxPolicy === 'require' && cand.component === '2') {
+            return;
+        }
+        this._candidateBuffer.push(cand);
+
+        if (self.config.useJingle) {
+            if (!ice.sdpMid) {
+                // firefox doesn't set this
+                if (self.pc.remoteDescription && self.pc.remoteDescription.type === 'offer') {
+                    // preserve name from remote
+                    ice.sdpMid = self.remoteDescription.contents[ice.sdpMLineIndex].name;
+                } else {
+                    ice.sdpMid = self.localDescription.contents[ice.sdpMLineIndex].name;
+                }
+            }
+            if (!self.iceCredentials.local[ice.sdpMid]) {
+                var jingle = SJJ.toSessionJSON(self.pc.localDescription.sdp, {
+                    role: self._role(),
+                    direction: 'outgoing'
+                });
+                jingle.contents.forEach(function (content) {
+                    var transport = content.transport || {};
+                    if (transport.ufrag) {
+                        self.iceCredentials.local[content.name] = {
+                            ufrag: transport.ufrag,
+                            pwd: transport.pwd
+                        };
+                    }
+                });
+            }
+            expandedCandidate.jingle = {
+                contents: [{
+                    name: ice.sdpMid,
+                    creator: self._role(),
+                    transport: {
+                        transportType: 'iceUdp',
+                        ufrag: self.iceCredentials.local[ice.sdpMid].ufrag,
+                        pwd: self.iceCredentials.local[ice.sdpMid].pwd,
+                        candidates: [cand]
+                    }
+                }]
+            };
+            if (self.batchIceCandidates > 0) {
+                if (self.batchedIceCandidates.length === 0) {
+                    window.setTimeout(function () {
+                        var contents = {};
+                        self.batchedIceCandidates.forEach(function (content) {
+                            content = content.contents[0];
+                            if (!contents[content.name]) contents[content.name] = content;
+                            contents[content.name].transport.candidates.push(content.transport.candidates[0]);
+                        });
+                        var newCand = {
+                            jingle: {
+                                contents: []
+                            }
+                        };
+                        Object.keys(contents).forEach(function (name) {
+                            newCand.jingle.contents.push(contents[name]);
+                        });
+                        self.batchedIceCandidates = [];
+                        self.emit('ice', newCand);
+                    }, self.batchIceCandidates);
+                }
+                self.batchedIceCandidates.push(expandedCandidate.jingle);
+                return;
+            }
+        }
+        this.emit('ice', expandedCandidate);
+    } else {
+        this.emit('endOfCandidates');
+    }
+};
+
+// Internal method for processing a new data channel being added by the
+// other peer.
+PeerConnection.prototype._onDataChannel = function (event) {
+    // make sure we keep a reference so this doesn't get garbage collected
+    var channel = event.channel;
+    this._remoteDataChannels.push(channel);
+
+    this.emit('addChannel', channel);
+};
+
+// Create a data channel spec reference:
+// http://dev.w3.org/2011/webrtc/editor/webrtc.html#idl-def-RTCDataChannelInit
+PeerConnection.prototype.createDataChannel = function (name, opts) {
+    var channel = this.pc.createDataChannel(name, opts);
+
+    // make sure we keep a reference so this doesn't get garbage collected
+    this._localDataChannels.push(channel);
+
+    return channel;
+};
+
+PeerConnection.prototype.getStats = function (cb) {
+    this.pc.getStats(null, function (res) {
+        cb(null, res);
+    }, function (err) {
+        cb(err);
+    });
+};
+
+module.exports = PeerConnection;
+
+},{"lodash.clonedeep":73,"sdp-jingle-json":221,"traceablepeerconnection":274,"util":290,"webrtc-adapter":275,"wildemitter":285}],7:[function(require,module,exports){
 'use strict';
 
 var util = require('util');
@@ -1571,22 +2006,7 @@ var Peer = require('./peer');
 
 function WebRTC(opts) {
     var self = this;
-    var options = opts || {};
-    var config = this.config = {
-        debug: false,
-        // makes the entire PC config overridable
-        peerConnectionConfig: {
-            iceServers: [{ 'urls': 'stun:stun.l.google.com:19302' }]
-        },
-        peerConnectionConstraints: {
-            optional: []
-        },
-        receiveMedia: {
-            offerToReceiveAudio: 1,
-            offerToReceiveVideo: 1
-        },
-        enableDataChannels: true
-    };
+
     var item;
 
     // expose screensharing check
@@ -1597,22 +2017,11 @@ function WebRTC(opts) {
     // We log nothing by default, following "the rule of silence":
     // http://www.linfo.org/rule_of_silence.html
     this.logger = function () {
-        // we assume that if you're in debug mode and you didn't
-        // pass in a logger, you actually want to log as much as
-        // possible.
-        if (opts.debug) {
-            return opts.logger || console;
-        } else {
-            // or we'll use your logger which should have its own logic
-            // for output. Or we'll return the no-op.
-            return opts.logger || mockconsole;
-        }
+        return console;
     }();
 
     // set options
-    for (item in options) {
-        this.config[item] = options[item];
-    }
+    this.config = opts;
 
     // check for support
     if (!webrtc.support) {
@@ -1624,58 +2033,6 @@ function WebRTC(opts) {
 
     // call localMedia constructor
     localMedia.call(this, this.config);
-
-    this.on('speaking', function () {
-        if (!self.hardMuted) {
-            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
-            self.peers.forEach(function (peer) {
-                if (peer.enableDataChannels) {
-                    var dc = peer.getDataChannel('hark');
-                    if (dc.readyState != 'open') return;
-                    dc.send(JSON.stringify({ type: 'speaking' }));
-                }
-            });
-        }
-    });
-    this.on('stoppedSpeaking', function () {
-        if (!self.hardMuted) {
-            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
-            self.peers.forEach(function (peer) {
-                if (peer.enableDataChannels) {
-                    var dc = peer.getDataChannel('hark');
-                    if (dc.readyState != 'open') return;
-                    dc.send(JSON.stringify({ type: 'stoppedSpeaking' }));
-                }
-            });
-        }
-    });
-    this.on('volumeChange', function (volume, treshold) {
-        if (!self.hardMuted) {
-            // FIXME: should use sendDirectlyToAll, but currently has different semantics wrt payload
-            /* self.peers.forEach(function (peer) {
-                 if (peer.enableDataChannels) {
-                     var dc = peer.getDataChannel('hark');
-                     if (dc.readyState != 'open') return;
-                     dc.send(JSON.stringify({type: 'volume', volume: volume }));
-                 }
-             });*/
-        }
-    });
-
-    // log events in debug mode
-    if (this.config.debug) {
-        this.on('*', function (event, val1, val2) {
-            var logger;
-            // if you didn't pass in a logger and you explicitly turning on debug
-            // we're just going to assume you're wanting log output with console
-            if (self.config.logger === mockconsole) {
-                logger = console;
-            } else {
-                logger = self.logger;
-            }
-            logger.log('event:', event, val1, val2);
-        });
-    }
 }
 
 util.inherits(WebRTC, localMedia);
@@ -1728,63 +2085,588 @@ WebRTC.prototype.sendDirectly = function (peerId, channel, message, payload) {
 
 module.exports = WebRTC;
 
-},{"./LiveLabLocalMedia":12,"./peer":13,"mockconsole":71,"util":286,"webrtcsupport":280,"wildemitter":281}],16:[function(require,module,exports){
+},{"./LiveLabLocalMedia":2,"./peer":5,"mockconsole":76,"util":290,"webrtcsupport":284,"wildemitter":285}],8:[function(require,module,exports){
+module.exports={
+	"room": null,
+	"rtc": {
+       "autoRequestMedia": true,
+       "url": "https://sandbox.simplewebrtc.com:443/",
+        "peerConnectionConfig": {
+                "iceServers": [{"urls": "stun:stun.l.google.com:19302"}]
+            },
+            "peerConnectionConstraints": {
+                "optional": []
+            },
+            "receiveMedia": {
+                "offerToReceiveAudio": 1,
+                "offerToReceiveVideo": 1
+            },
+       "media": {
+         "audio": {
+           "optional": [
+          {"googAutoGainControl": true}, 
+           {"googAutoGainControl2": true}, 
+           {"googEchoCancellation": true},
+           {"googEchoCancellation2": true},
+           {"googNoiseSuppression": true},
+           {"googNoiseSuppression2": true},
+           {"googHighpassFilter": true},
+           {"googTypingNoiseDetection": true},
+           {"googAudioMirroring": true}
+           ]
+         },
+         "video": {
+           "optional": [
+           ]
+         }
+       }
+     }
+	
+}
+},{}],9:[function(require,module,exports){
+'use strict';
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var React = require('react');
+var ButtonInput = require('./ButtonInput.jsx');
+var Dropdown = require('./Dropdown.jsx');
+/* Select input source reference: https://github.com/webrtc/samples/blob/gh-pages/src/content/devices/input-output/js/main.js */
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	getInitialState: function getInitialState() {
+		return { step: 0, constraints: { video: false, audio: false } };
+	},
+	updateStep: function updateStep() {
+		this.setState({ step: this.state.step + 1 });
+	},
+	newStream: function newStream() {
+		this.props.liveLab.newStream(this.state.constraints);
+		this.props.closeMenu();
+	},
+	changeCheckbox: function changeCheckbox(param) {
+		//this.state.constraints[param]? false: true
+		var newConstraints = this.state.constraints;
+		newConstraints[param] = this.state.constraints[param] ? false : true;
+		this.setState({ constraints: newConstraints });
+	},
+	onSelectAudioSource: function onSelectAudioSource(e) {
+		var newConstraints = this.state.constraints;
+		newConstraints.audio = { deviceId: { exact: e.target.value } };
+		this.setState({ constraints: newConstraints });
+	},
+	onSelectVideoSource: function onSelectVideoSource(e) {
+		var newConstraints = this.state.constraints;
+		newConstraints.video = { deviceId: { exact: e.target.value } };
+		this.setState({ constraints: newConstraints });
+	},
+	getDropdown: function getDropdown(type) {
+		var deviceId = this.state.constraints[type].deviceId;
+		if (type == "audio") {
+			var opts = this.props.liveLab.devices.audioinput.map(function (dev) {
+				return { label: dev.label, value: dev.deviceId };
+			});
+			return React.createElement(Dropdown, _extends({}, this.props, { label: 'Select input:  ', value: deviceId ? deviceId.exact : "", options: opts, onChange: this.onSelectAudioSource }));
+		} else {
+			var opts = this.props.liveLab.devices.videoinput.map(function (dev) {
+				return { label: dev.label, value: dev.deviceId };
+			});
+			return React.createElement(Dropdown, _extends({}, this.props, { label: 'Select input:  ', value: deviceId ? deviceId.exact : "", options: opts, onChange: this.onSelectVideoSource }));
+		}
+	},
+	render: function render() {
+		var formContents = [];
+		if (this.state.step == 0) {
+			var obj = this.state.constraints;
+			//	console.log(obj);
+			for (var param in obj) {
+				if (obj[param] != false) {
+					var opts = this.getDropdown(param);
+					formContents.push(React.createElement(
+						'div',
+						null,
+						React.createElement('input', { type: 'checkbox', name: " " + param, checked: true, onChange: this.changeCheckbox.bind(this, param) }),
+						param,
+						opts
+					));
+				} else {
+					formContents.push(React.createElement(
+						'div',
+						null,
+						React.createElement('input', { type: 'checkbox', name: " " + param, checked: this.state.constraints[param], onChange: this.changeCheckbox.bind(this, param) }),
+						param
+					));
+				}
+			}
+			//	formContents.push(<input type="checkbox" name="vehicle" value="Car" checked> I have a car/>);
+		}
+
+		return React.createElement(
+			'div',
+			{ className: 'toolbar-element show' },
+			React.createElement(
+				'div',
+				null,
+				'Add stream: '
+			),
+			formContents,
+			React.createElement(ButtonInput, { text: 'Add!', className: '', onClick: this.newStream })
+		);
+	}
+});
+
+},{"./ButtonInput.jsx":10,"./Dropdown.jsx":12,"react":220}],10:[function(require,module,exports){
+'use strict';
+
+var React = require('react');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+
+	render: function render() {
+
+		return React.createElement(
+			'button',
+			{ onClick: this.props.onClick, className: this.props.className },
+			this.props.text,
+			'   '
+		);
+	}
+});
+
+},{"react":220}],11:[function(require,module,exports){
+'use strict';
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var React = require('react');
+var StreamContainer = require('./StreamContainer.jsx');
+var MenuBar = require('./MenuBar.jsx');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	render: function render() {
+		var localVids = this.props.liveLab.localStreams.map(function (stream, index) {
+			return React.createElement(StreamContainer, _extends({}, this.props, { stream: stream.stream, handler: stream.handler, muted: true, key: index }));
+		}.bind(this));
+		var remoteVids = this.props.liveLab.peers.map(function (peer, index) {
+			var allStreams = peer.streams.map(function (stream, i) {
+				return React.createElement(StreamContainer, _extends({}, this.props, { stream: stream.stream, handler: stream.handler, muted: true, key: "peer_" + index + "_" + i }));
+			}.bind(this));
+			return React.createElement(
+				'div',
+				null,
+				' ',
+				allStreams
+			);
+		}.bind(this));
+		return React.createElement(
+			'div',
+			null,
+			localVids,
+			remoteVids,
+			React.createElement(MenuBar, this.props)
+		);
+	}
+});
+
+},{"./MenuBar.jsx":15,"./StreamContainer.jsx":17,"react":220}],12:[function(require,module,exports){
+'use strict';
+
+var React = require('react');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+
+	render: function render() {
+		var list = this.props.options.map(function (obj) {
+			return React.createElement(
+				'option',
+				{ value: obj.value },
+				obj.label
+			);
+		});
+		var select = React.createElement(
+			'select',
+			{ onChange: this.props.onChange, value: this.props.value },
+			' ',
+			list,
+			' '
+		);
+		return React.createElement(
+			'div',
+			null,
+			this.props.label,
+			select
+		);
+	}
+});
+
+},{"react":220}],13:[function(require,module,exports){
 "use strict";
 
-// function to escape any text that will be used to set innerHTML of DOM nodes,
-// preventing js injection
-function escapeText(text) {
-    return text.replace("<", "&lt;").replace(">", "&gt;").replace("/", "&#47;");
+var React = require('react');
+
+module.exports = React.createClass({
+  displayName: "exports",
+
+  render: function render() {
+    return React.createElement(
+      "form",
+      { id: "createRoom" },
+      React.createElement(
+        "h1",
+        null,
+        "Start a room"
+      ),
+      React.createElement("input", { id: "sessionInput" }),
+      React.createElement(
+        "button",
+        { type: "submit" },
+        "Create it!"
+      )
+    );
+  }
+});
+
+},{"react":220}],14:[function(require,module,exports){
+'use strict';
+
+var React = require('react');
+var Landing = require('./Landing.jsx');
+var ControlPanel = require('./ControlPanel.jsx');
+
+var LiveLab = require('./../LiveLabRTC/LiveLab.js');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	/*set room variables from config.json*/
+	getInitialState: function getInitialState() {
+		return { liveLab: null, dimensions: { w: 1280, h: 720 } };
+	},
+	/*check for room name in URL, and join room if not null*/
+	componentDidMount: function componentDidMount() {
+		this.liveLab = new LiveLab(this.update);
+		this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight }, liveLab: this.liveLab });
+		window.onresize = function () {
+			this.setState({ dimensions: { w: window.innerWidth, h: window.innerHeight } });
+		}.bind(this);
+	},
+	/*	updateLocalStreams: function(streams){
+ 		console.log(streams);
+ 		this.setState({localStreams: streams});
+ 	},
+ 	updatePeers: function(peers){
+ 		this.setState({peers:peers});
+ 	},*/
+	update: function update() {
+		this.setState({ liveLab: this.liveLab });
+	},
+	render: function render() {
+		if (this.state.liveLab == null) {
+			return React.createElement(Landing, { dimensions: this.state.dimensions });
+		} else {
+			return React.createElement(ControlPanel, { dimensions: this.state.dimensions, liveLab: this.state.liveLab });
+		}
+	}
+});
+
+},{"./../LiveLabRTC/LiveLab.js":1,"./ControlPanel.jsx":11,"./Landing.jsx":13,"react":220}],15:[function(require,module,exports){
+'use strict';
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var React = require('react');
+var ButtonInput = require('./ButtonInput.jsx');
+var AddStream = require('./AddStream.jsx');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	getInitialState: function getInitialState() {
+		return { addStream: false };
+	},
+	toggleAddStream: function toggleAddStream() {
+		this.setState({ addStream: this.state.addStream ? false : true });
+	},
+	render: function render() {
+		var menus = [];
+		if (this.state.addStream) {
+			menus.push(React.createElement(AddStream, _extends({}, this.props, { closeMenu: this.toggleAddStream })));
+		}
+		var overlayStyle = {
+			position: "fixed",
+			width: "100%",
+			height: "100%",
+			top: "0px",
+			left: "0px",
+			pointerEvents: "none"
+		};
+
+		return React.createElement(
+			'div',
+			{ style: overlayStyle },
+			menus,
+			React.createElement(
+				'div',
+				{ className: 'toolbar' },
+				this.props.liveLab.room,
+				React.createElement(ButtonInput, { text: '+ Add Stream', className: 'toolbar-button', onClick: this.toggleAddStream })
+			)
+		);
+	}
+});
+
+},{"./AddStream.jsx":9,"./ButtonInput.jsx":10,"react":220}],16:[function(require,module,exports){
+'use strict';
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var React = require('react');
+var Dropdown = require('./Dropdown.jsx');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	select: function select(e) {
+		console.log("selected", e.target.value);
+		this.props.handler.setOutputSink(e.target.value);
+	},
+	render: function render() {
+		var opts = this.props.liveLab.devices.audiooutput.map(function (dev) {
+			return { label: dev.label, value: dev.deviceId };
+		});
+		return React.createElement(Dropdown, _extends({}, this.props, { label: 'Select audio output', value: this.props.handler.audio.sinkId, options: opts, onChange: this.select }));
+	}
+});
+
+},{"./Dropdown.jsx":12,"react":220}],17:[function(require,module,exports){
+'use strict';
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var React = require('react');
+var VideoContainer = require('./VideoContainer.jsx');
+var StreamControls = require('./StreamControls.jsx');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	getInitialState: function getInitialState() {
+		return { tracks: [] };
+	},
+	componentDidMount: function componentDidMount() {
+		// var tracks = this.props.stream.getTracks();
+		// this.setState({tracks: tracks});
+
+	},
+	render: function render() {
+		var w = Math.floor(this.props.dimensions.w / 3);
+		var h = w * 480 / 640;
+		var divStyle = {
+			width: w,
+			height: h,
+			position: "relative",
+			display: "inline-block"
+		};
+		var tracks = [];
+		if (this.props.handler) {
+			// if(this.props.handler.hasAudio){
+			// 	tracks.push(<AudioContainer {...this.props} w={w} h={h} />);
+			// }
+			if (this.props.handler.hasVideo) {
+				tracks.push(React.createElement(VideoContainer, _extends({}, this.props, { w: w, h: h })));
+			}
+			tracks.push(React.createElement(StreamControls, _extends({}, this.props, { w: w, h: h })));
+		}
+		return React.createElement(
+			'div',
+			{ style: divStyle },
+			' ',
+			tracks,
+			' '
+		);
+	}
+});
+
+},{"./StreamControls.jsx":18,"./VideoContainer.jsx":19,"react":220}],18:[function(require,module,exports){
+'use strict';
+
+var React = require('react');
+var ReactDOM = require('react-dom');
+var VideoContainer = require('./VideoContainer.jsx');
+var OutputSettings = require('./OutputSettings.jsx');
+
+module.exports = React.createClass({
+	displayName: 'exports',
+
+	getInitialState: function getInitialState() {
+		return { showSettings: false, showWindow: false, fullscreen: false };
+	},
+	showSettings: function showSettings() {
+		this.setState({ showSettings: this.state.showSettings ? false : true });
+	},
+	toggleFullscreen: function toggleFullscreen() {
+		var isFirefox = typeof InstallTrigger !== 'undefined';
+		var isChrome = !!window.chrome && !!window.chrome.webstore;
+		if (this.state.fullscreen) {
+			if (isFirefox == true) {
+				this.childWindow.document.getElementsByTagName('video')[0].mozCancelFullscreen();
+			}
+			if (isChrome == true) {
+				this.childWindow.document.getElementsByTagName('video')[0].webkitExitFullscreen();
+			}
+			this.setState({ fullscreen: true });
+		} else {
+			if (isFirefox == true) {
+				this.childWindow.document.getElementsByTagName('video')[0].mozRequestFullScreen();
+			}
+			if (isChrome == true) {
+				this.childWindow.document.getElementsByTagName('video')[0].webkitRequestFullScreen();
+			}
+			this.setState({ fullscreen: true });
+		}
+	},
+	showWindow: function showWindow() {
+		if (this.state.showWindow && this.childWindow) {
+			this.childWindow.close();
+			this.setState({ showWindow: false, fullscreen: false });
+		} else {
+			var ip = window.location.host + window.location.pathname;
+			var peerWindow = window.open(null, this.props.handler.stream.id, 'popup');
+			var isFirefox = typeof InstallTrigger !== 'undefined';
+			var isChrome = !!window.chrome && !!window.chrome.webstore;
+			if (isChrome) {
+				var container = peerWindow.document.createElement("div");
+				peerWindow.document.body.appendChild(container);
+				peerWindow.document.head.innerHTML = "<link rel='stylesheet' href='https://" + ip + "css/main.css'>";
+				ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, fullscreen: this.state.fullscreen, muted: true }), container);
+			}
+			if (isFirefox) {
+				peerWindow.onload = function () {
+					var container = peerWindow.document.createElement("div");
+					peerWindow.document.body.appendChild(container);
+					ReactDOM.render(React.createElement(VideoContainer, { stream: this.props.handler.stream, fullscreen: this.state.fullscreen, muted: true }), container);
+				}.bind(this);
+			}
+			/* Detect when window is closed by user */
+			peerWindow.onbeforeunload = function () {
+				console.log("closing window");
+				this.setState({ showWindow: false, fullscreen: false });
+			}.bind(this);
+			this.childWindow = peerWindow;
+			this.setState({ showWindow: true });
+		}
+	},
+	componentWillUnmount: function componentWillUnmount() {
+		/*close child window if stream remove */
+		if (this.state.showWindow) {
+			this.showWindow();
+		}
+	},
+	render: function render() {
+
+		var controls = [];
+		if (this.props.handler.hasAudio) {
+			//controls.push(<i className="fa fa-volume-up stream-controls"></i>);
+			if (this.props.handler.muted) {
+				controls.push(React.createElement('i', { className: 'fa fa-volume-off stream-controls', onClick: this.props.handler.toggleMute.bind(this.props.handler) }));
+			} else {
+				controls.push(React.createElement('i', { className: 'fa fa-volume-up stream-controls', onClick: this.props.handler.toggleMute.bind(this.props.handler) }));
+			}
+		}
+		if (this.props.handler.hasVideo) {
+			if (!this.state.showWindow) {
+				controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls', onClick: this.showWindow }));
+			} else {
+				controls.push(React.createElement('i', { className: 'fa fa-clone stream-controls selected', onClick: this.showWindow }));
+				if (!this.state.fullscreen) {
+					controls.push(React.createElement('i', { className: 'fa fa-expand stream-controls', onClick: this.toggleFullscreen }));
+				} else {
+					controls.push(React.createElement('i', { className: 'fa fa-compress stream-controls', onClick: this.toggleFullscreen }));
+				}
+			}
+		}
+		controls.push(React.createElement('i', { className: 'fa fa-cog stream-controls', onClick: this.showSettings }));
+
+		var settings = [];
+		if (this.state.showSettings) {
+			settings = React.createElement(OutputSettings, this.props);
+		}
+		var divStyle = {
+			position: "absolute",
+			background: "rgba(0, 0, 0, 0.4)",
+			bottom: "0px",
+			width: "100%",
+			textAlign: "right"
+		};
+		return React.createElement(
+			'div',
+			{ style: divStyle },
+			controls,
+			settings
+		);
+	}
+});
+
+},{"./OutputSettings.jsx":16,"./VideoContainer.jsx":19,"react":220,"react-dom":78}],19:[function(require,module,exports){
+"use strict";
+
+var React = require('react');
+
+module.exports = React.createClass({
+	displayName: "exports",
+
+
+	render: function render() {
+
+		return React.createElement("video", { autoPlay: true, muted: this.props.muted, width: "100%", ref: "vid", src: window.URL.createObjectURL(this.props.stream) });
+	}
+});
+
+},{"react":220}],20:[function(require,module,exports){
+'use strict';
+
+// main.js
+var React = require('react');
+var ReactDOM = require('react-dom');
+var Main = require('./Main.jsx');
+
+ReactDOM.render(React.createElement(Main, null), document.body);
+
+},{"./Main.jsx":14,"react":220,"react-dom":78}],21:[function(require,module,exports){
+'use strict';
+
+var io = require('socket.io-client');
+
+function SocketIoConnection(config) {
+    this.connection = io.connect(config.url, config.socketio);
 }
 
-module.exports.escapeText = escapeText;
-
-},{}],17:[function(require,module,exports){
-var adapter = require('webrtc-adapter');
-module.exports = function (stream, el, options) {
-    var item;
-    var URL = window.URL;
-    var element = el;
-    var opts = {
-        autoplay: true,
-        mirror: false,
-        muted: false,
-        audio: false,
-        disableContextMenu: false
-    };
-
-    if (options) {
-        for (item in options) {
-            opts[item] = options[item];
-        }
-    }
-
-    if (!element) {
-        element = document.createElement(opts.audio ? 'audio' : 'video');
-    } else if (element.tagName.toLowerCase() === 'audio') {
-        opts.audio = true;
-    }
-
-    if (opts.disableContextMenu) {
-        element.oncontextmenu = function (e) {
-            e.preventDefault();
-        };
-    }
-
-    if (opts.autoplay) element.autoplay = 'autoplay';
-    if (opts.muted) element.muted = true;
-    if (!opts.audio && opts.mirror) {
-        ['', 'moz', 'webkit', 'o', 'ms'].forEach(function (prefix) {
-            var styleName = prefix ? prefix + 'Transform' : 'transform';
-            element.style[styleName] = 'scaleX(-1)';
-        });
-    }
-
-    element.srcObject = stream;
-    return element;
+SocketIoConnection.prototype.on = function (ev, fn) {
+    this.connection.on(ev, fn);
 };
 
-},{"webrtc-adapter":271}],18:[function(require,module,exports){
+SocketIoConnection.prototype.emit = function () {
+    this.connection.emit.apply(this.connection, arguments);
+};
+
+SocketIoConnection.prototype.getSessionid = function () {
+    return this.connection.id;
+};
+
+SocketIoConnection.prototype.disconnect = function () {
+    return this.connection.disconnect();
+};
+
+module.exports = SocketIoConnection;
+
+},{"socket.io-client":227}],22:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -1870,7 +2752,7 @@ var EventListener = {
 
 module.exports = EventListener;
 }).call(this,require('_process'))
-},{"./emptyFunction":25,"_process":284}],19:[function(require,module,exports){
+},{"./emptyFunction":29,"_process":288}],23:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -1906,7 +2788,7 @@ var ExecutionEnvironment = {
 };
 
 module.exports = ExecutionEnvironment;
-},{}],20:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 "use strict";
 
 /**
@@ -1938,7 +2820,7 @@ function camelize(string) {
 }
 
 module.exports = camelize;
-},{}],21:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -1978,7 +2860,7 @@ function camelizeStyleName(string) {
 }
 
 module.exports = camelizeStyleName;
-},{"./camelize":20}],22:[function(require,module,exports){
+},{"./camelize":24}],26:[function(require,module,exports){
 'use strict';
 
 /**
@@ -2018,7 +2900,7 @@ function containsNode(outerNode, innerNode) {
 }
 
 module.exports = containsNode;
-},{"./isTextNode":35}],23:[function(require,module,exports){
+},{"./isTextNode":39}],27:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -2147,7 +3029,7 @@ function createArrayFromMixed(obj) {
 
 module.exports = createArrayFromMixed;
 }).call(this,require('_process'))
-},{"./invariant":33,"_process":284}],24:[function(require,module,exports){
+},{"./invariant":37,"_process":288}],28:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -2233,7 +3115,7 @@ function createNodesFromMarkup(markup, handleScript) {
 
 module.exports = createNodesFromMarkup;
 }).call(this,require('_process'))
-},{"./ExecutionEnvironment":19,"./createArrayFromMixed":23,"./getMarkupWrap":29,"./invariant":33,"_process":284}],25:[function(require,module,exports){
+},{"./ExecutionEnvironment":23,"./createArrayFromMixed":27,"./getMarkupWrap":33,"./invariant":37,"_process":288}],29:[function(require,module,exports){
 "use strict";
 
 /**
@@ -2272,7 +3154,7 @@ emptyFunction.thatReturnsArgument = function (arg) {
 };
 
 module.exports = emptyFunction;
-},{}],26:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 (function (process){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
@@ -2294,7 +3176,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = emptyObject;
 }).call(this,require('_process'))
-},{"_process":284}],27:[function(require,module,exports){
+},{"_process":288}],31:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2321,7 +3203,7 @@ function focusNode(node) {
 }
 
 module.exports = focusNode;
-},{}],28:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 'use strict';
 
 /**
@@ -2356,7 +3238,7 @@ function getActiveElement() /*?DOMElement*/{
 }
 
 module.exports = getActiveElement;
-},{}],29:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -2453,7 +3335,7 @@ function getMarkupWrap(nodeName) {
 
 module.exports = getMarkupWrap;
 }).call(this,require('_process'))
-},{"./ExecutionEnvironment":19,"./invariant":33,"_process":284}],30:[function(require,module,exports){
+},{"./ExecutionEnvironment":23,"./invariant":37,"_process":288}],34:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2492,7 +3374,7 @@ function getUnboundedScrollPosition(scrollable) {
 }
 
 module.exports = getUnboundedScrollPosition;
-},{}],31:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 'use strict';
 
 /**
@@ -2525,7 +3407,7 @@ function hyphenate(string) {
 }
 
 module.exports = hyphenate;
-},{}],32:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2564,7 +3446,7 @@ function hyphenateStyleName(string) {
 }
 
 module.exports = hyphenateStyleName;
-},{"./hyphenate":31}],33:[function(require,module,exports){
+},{"./hyphenate":35}],37:[function(require,module,exports){
 (function (process){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
@@ -2616,7 +3498,7 @@ function invariant(condition, format, a, b, c, d, e, f) {
 
 module.exports = invariant;
 }).call(this,require('_process'))
-},{"_process":284}],34:[function(require,module,exports){
+},{"_process":288}],38:[function(require,module,exports){
 'use strict';
 
 /**
@@ -2639,7 +3521,7 @@ function isNode(object) {
 }
 
 module.exports = isNode;
-},{}],35:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 'use strict';
 
 /**
@@ -2664,7 +3546,7 @@ function isTextNode(object) {
 }
 
 module.exports = isTextNode;
-},{"./isNode":34}],36:[function(require,module,exports){
+},{"./isNode":38}],40:[function(require,module,exports){
 (function (process){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
@@ -2714,7 +3596,7 @@ var keyMirror = function keyMirror(obj) {
 
 module.exports = keyMirror;
 }).call(this,require('_process'))
-},{"./invariant":33,"_process":284}],37:[function(require,module,exports){
+},{"./invariant":37,"_process":288}],41:[function(require,module,exports){
 "use strict";
 
 /**
@@ -2749,7 +3631,7 @@ var keyOf = function keyOf(oneKeyObj) {
 };
 
 module.exports = keyOf;
-},{}],38:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2800,7 +3682,7 @@ function mapObject(object, callback, context) {
 }
 
 module.exports = mapObject;
-},{}],39:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2830,7 +3712,7 @@ function memoizeStringOnly(callback) {
 }
 
 module.exports = memoizeStringOnly;
-},{}],40:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2853,7 +3735,7 @@ if (ExecutionEnvironment.canUseDOM) {
 }
 
 module.exports = performance || {};
-},{"./ExecutionEnvironment":19}],41:[function(require,module,exports){
+},{"./ExecutionEnvironment":23}],45:[function(require,module,exports){
 'use strict';
 
 /**
@@ -2887,7 +3769,7 @@ if (performance.now) {
 }
 
 module.exports = performanceNow;
-},{"./performance":40}],42:[function(require,module,exports){
+},{"./performance":44}],46:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -2954,7 +3836,7 @@ function shallowEqual(objA, objB) {
 }
 
 module.exports = shallowEqual;
-},{}],43:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-2015, Facebook, Inc.
@@ -3013,7 +3895,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = warning;
 }).call(this,require('_process'))
-},{"./emptyFunction":25,"_process":284}],44:[function(require,module,exports){
+},{"./emptyFunction":29,"_process":288}],48:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 var util = require('util');
 
@@ -3101,7 +3983,7 @@ module.exports.support = typeof window !== 'undefined' && window && window.File 
 module.exports.Sender = Sender;
 module.exports.Receiver = Receiver;
 
-},{"util":286,"wildemitter":281}],45:[function(require,module,exports){
+},{"util":290,"wildemitter":285}],49:[function(require,module,exports){
 // getScreenMedia helper by @HenrikJoreteg
 var getUserMedia = require('getusermedia');
 
@@ -3269,7 +4151,7 @@ window.addEventListener('message', function (event) {
     }
 });
 
-},{"getusermedia":46}],46:[function(require,module,exports){
+},{"getusermedia":50}],50:[function(require,module,exports){
 // getUserMedia helper by @HenrikJoreteg used for navigator.getUserMedia shim
 var adapter = require('webrtc-adapter');
 
@@ -3352,7 +4234,7 @@ module.exports = function (constraints, cb) {
     });
 };
 
-},{"webrtc-adapter":48}],47:[function(require,module,exports){
+},{"webrtc-adapter":52}],51:[function(require,module,exports){
  /* eslint-env node */
 'use strict';
 
@@ -3845,7 +4727,7 @@ SDPUtils.getDirection = function(mediaSection, sessionpart) {
 // Expose public methods.
 module.exports = SDPUtils;
 
-},{}],48:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -3939,7 +4821,7 @@ module.exports = SDPUtils;
   }
 })();
 
-},{"./chrome/chrome_shim":49,"./edge/edge_shim":51,"./firefox/firefox_shim":53,"./safari/safari_shim":55,"./utils":56}],49:[function(require,module,exports){
+},{"./chrome/chrome_shim":53,"./edge/edge_shim":55,"./firefox/firefox_shim":57,"./safari/safari_shim":59,"./utils":60}],53:[function(require,module,exports){
 
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
@@ -4224,7 +5106,7 @@ module.exports = {
   reattachMediaStream: chromeShim.reattachMediaStream
 };
 
-},{"../utils.js":56,"./getusermedia":50}],50:[function(require,module,exports){
+},{"../utils.js":60,"./getusermedia":54}],54:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -4415,7 +5297,7 @@ module.exports = function() {
   }
 };
 
-},{"../utils.js":56}],51:[function(require,module,exports){
+},{"../utils.js":60}],55:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -5419,7 +6301,7 @@ module.exports = {
   reattachMediaStream: edgeShim.reattachMediaStream
 };
 
-},{"../utils":56,"./getusermedia":52,"sdp":47}],52:[function(require,module,exports){
+},{"../utils":60,"./getusermedia":56,"sdp":51}],56:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -5453,7 +6335,7 @@ module.exports = function() {
   };
 };
 
-},{}],53:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -5727,7 +6609,7 @@ module.exports = {
   reattachMediaStream: firefoxShim.reattachMediaStream
 };
 
-},{"../utils":56,"./getusermedia":54}],54:[function(require,module,exports){
+},{"../utils":60,"./getusermedia":58}],58:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -5872,7 +6754,7 @@ module.exports = function() {
   }
 };
 
-},{"../utils":56}],55:[function(require,module,exports){
+},{"../utils":60}],59:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -5908,7 +6790,7 @@ module.exports = {
   // reattachMediaStream: safariShim.reattachMediaStream
 };
 
-},{}],56:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -6053,13 +6935,13 @@ module.exports = {
   extractVersion: utils.extractVersion
 };
 
-},{}],57:[function(require,module,exports){
-arguments[4][46][0].apply(exports,arguments)
-},{"dup":46,"webrtc-adapter":59}],58:[function(require,module,exports){
-arguments[4][47][0].apply(exports,arguments)
-},{"dup":47}],59:[function(require,module,exports){
-arguments[4][48][0].apply(exports,arguments)
-},{"./chrome/chrome_shim":60,"./edge/edge_shim":62,"./firefox/firefox_shim":64,"./safari/safari_shim":66,"./utils":67,"dup":48}],60:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
+arguments[4][50][0].apply(exports,arguments)
+},{"dup":50,"webrtc-adapter":63}],62:[function(require,module,exports){
+arguments[4][51][0].apply(exports,arguments)
+},{"dup":51}],63:[function(require,module,exports){
+arguments[4][52][0].apply(exports,arguments)
+},{"./chrome/chrome_shim":64,"./edge/edge_shim":66,"./firefox/firefox_shim":68,"./safari/safari_shim":70,"./utils":71,"dup":52}],64:[function(require,module,exports){
 
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
@@ -6344,9 +7226,9 @@ module.exports = {
   reattachMediaStream: chromeShim.reattachMediaStream
 };
 
-},{"../utils.js":67,"./getusermedia":61}],61:[function(require,module,exports){
-arguments[4][50][0].apply(exports,arguments)
-},{"../utils.js":67,"dup":50}],62:[function(require,module,exports){
+},{"../utils.js":71,"./getusermedia":65}],65:[function(require,module,exports){
+arguments[4][54][0].apply(exports,arguments)
+},{"../utils.js":71,"dup":54}],66:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -7397,9 +8279,9 @@ module.exports = {
   reattachMediaStream: edgeShim.reattachMediaStream
 };
 
-},{"../utils":67,"./getusermedia":63,"sdp":58}],63:[function(require,module,exports){
-arguments[4][52][0].apply(exports,arguments)
-},{"dup":52}],64:[function(require,module,exports){
+},{"../utils":71,"./getusermedia":67,"sdp":62}],67:[function(require,module,exports){
+arguments[4][56][0].apply(exports,arguments)
+},{"dup":56}],68:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -7570,7 +8452,7 @@ module.exports = {
   reattachMediaStream: firefoxShim.reattachMediaStream
 };
 
-},{"../utils":67,"./getusermedia":65}],65:[function(require,module,exports){
+},{"../utils":71,"./getusermedia":69}],69:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -7722,11 +8604,11 @@ module.exports = function() {
   };
 };
 
-},{"../utils":67}],66:[function(require,module,exports){
-arguments[4][55][0].apply(exports,arguments)
-},{"dup":55}],67:[function(require,module,exports){
-arguments[4][56][0].apply(exports,arguments)
-},{"dup":56}],68:[function(require,module,exports){
+},{"../utils":71}],70:[function(require,module,exports){
+arguments[4][59][0].apply(exports,arguments)
+},{"dup":59}],71:[function(require,module,exports){
+arguments[4][60][0].apply(exports,arguments)
+},{"dup":60}],72:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
 
 function getMaxVolume (analyser, fftBins) {
@@ -7856,7 +8738,1759 @@ module.exports = function(stream, options) {
   return harker;
 }
 
-},{"wildemitter":281}],69:[function(require,module,exports){
+},{"wildemitter":285}],73:[function(require,module,exports){
+(function (global){
+/**
+ * lodash (Custom Build) <https://lodash.com/>
+ * Build: `lodash modularize exports="npm" -o ./`
+ * Copyright jQuery Foundation and other contributors <https://jquery.org/>
+ * Released under MIT license <https://lodash.com/license>
+ * Based on Underscore.js 1.8.3 <http://underscorejs.org/LICENSE>
+ * Copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+ */
+
+/** Used as the size to enable large array optimizations. */
+var LARGE_ARRAY_SIZE = 200;
+
+/** Used to stand-in for `undefined` hash values. */
+var HASH_UNDEFINED = '__lodash_hash_undefined__';
+
+/** Used as references for various `Number` constants. */
+var MAX_SAFE_INTEGER = 9007199254740991;
+
+/** `Object#toString` result references. */
+var argsTag = '[object Arguments]',
+    arrayTag = '[object Array]',
+    boolTag = '[object Boolean]',
+    dateTag = '[object Date]',
+    errorTag = '[object Error]',
+    funcTag = '[object Function]',
+    genTag = '[object GeneratorFunction]',
+    mapTag = '[object Map]',
+    numberTag = '[object Number]',
+    objectTag = '[object Object]',
+    promiseTag = '[object Promise]',
+    regexpTag = '[object RegExp]',
+    setTag = '[object Set]',
+    stringTag = '[object String]',
+    symbolTag = '[object Symbol]',
+    weakMapTag = '[object WeakMap]';
+
+var arrayBufferTag = '[object ArrayBuffer]',
+    dataViewTag = '[object DataView]',
+    float32Tag = '[object Float32Array]',
+    float64Tag = '[object Float64Array]',
+    int8Tag = '[object Int8Array]',
+    int16Tag = '[object Int16Array]',
+    int32Tag = '[object Int32Array]',
+    uint8Tag = '[object Uint8Array]',
+    uint8ClampedTag = '[object Uint8ClampedArray]',
+    uint16Tag = '[object Uint16Array]',
+    uint32Tag = '[object Uint32Array]';
+
+/**
+ * Used to match `RegExp`
+ * [syntax characters](http://ecma-international.org/ecma-262/7.0/#sec-patterns).
+ */
+var reRegExpChar = /[\\^$.*+?()[\]{}|]/g;
+
+/** Used to match `RegExp` flags from their coerced string values. */
+var reFlags = /\w*$/;
+
+/** Used to detect host constructors (Safari). */
+var reIsHostCtor = /^\[object .+?Constructor\]$/;
+
+/** Used to detect unsigned integer values. */
+var reIsUint = /^(?:0|[1-9]\d*)$/;
+
+/** Used to identify `toStringTag` values supported by `_.clone`. */
+var cloneableTags = {};
+cloneableTags[argsTag] = cloneableTags[arrayTag] =
+cloneableTags[arrayBufferTag] = cloneableTags[dataViewTag] =
+cloneableTags[boolTag] = cloneableTags[dateTag] =
+cloneableTags[float32Tag] = cloneableTags[float64Tag] =
+cloneableTags[int8Tag] = cloneableTags[int16Tag] =
+cloneableTags[int32Tag] = cloneableTags[mapTag] =
+cloneableTags[numberTag] = cloneableTags[objectTag] =
+cloneableTags[regexpTag] = cloneableTags[setTag] =
+cloneableTags[stringTag] = cloneableTags[symbolTag] =
+cloneableTags[uint8Tag] = cloneableTags[uint8ClampedTag] =
+cloneableTags[uint16Tag] = cloneableTags[uint32Tag] = true;
+cloneableTags[errorTag] = cloneableTags[funcTag] =
+cloneableTags[weakMapTag] = false;
+
+/** Detect free variable `global` from Node.js. */
+var freeGlobal = typeof global == 'object' && global && global.Object === Object && global;
+
+/** Detect free variable `self`. */
+var freeSelf = typeof self == 'object' && self && self.Object === Object && self;
+
+/** Used as a reference to the global object. */
+var root = freeGlobal || freeSelf || Function('return this')();
+
+/** Detect free variable `exports`. */
+var freeExports = typeof exports == 'object' && exports && !exports.nodeType && exports;
+
+/** Detect free variable `module`. */
+var freeModule = freeExports && typeof module == 'object' && module && !module.nodeType && module;
+
+/** Detect the popular CommonJS extension `module.exports`. */
+var moduleExports = freeModule && freeModule.exports === freeExports;
+
+/**
+ * Adds the key-value `pair` to `map`.
+ *
+ * @private
+ * @param {Object} map The map to modify.
+ * @param {Array} pair The key-value pair to add.
+ * @returns {Object} Returns `map`.
+ */
+function addMapEntry(map, pair) {
+  // Don't return `map.set` because it's not chainable in IE 11.
+  map.set(pair[0], pair[1]);
+  return map;
+}
+
+/**
+ * Adds `value` to `set`.
+ *
+ * @private
+ * @param {Object} set The set to modify.
+ * @param {*} value The value to add.
+ * @returns {Object} Returns `set`.
+ */
+function addSetEntry(set, value) {
+  // Don't return `set.add` because it's not chainable in IE 11.
+  set.add(value);
+  return set;
+}
+
+/**
+ * A specialized version of `_.forEach` for arrays without support for
+ * iteratee shorthands.
+ *
+ * @private
+ * @param {Array} [array] The array to iterate over.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @returns {Array} Returns `array`.
+ */
+function arrayEach(array, iteratee) {
+  var index = -1,
+      length = array ? array.length : 0;
+
+  while (++index < length) {
+    if (iteratee(array[index], index, array) === false) {
+      break;
+    }
+  }
+  return array;
+}
+
+/**
+ * Appends the elements of `values` to `array`.
+ *
+ * @private
+ * @param {Array} array The array to modify.
+ * @param {Array} values The values to append.
+ * @returns {Array} Returns `array`.
+ */
+function arrayPush(array, values) {
+  var index = -1,
+      length = values.length,
+      offset = array.length;
+
+  while (++index < length) {
+    array[offset + index] = values[index];
+  }
+  return array;
+}
+
+/**
+ * A specialized version of `_.reduce` for arrays without support for
+ * iteratee shorthands.
+ *
+ * @private
+ * @param {Array} [array] The array to iterate over.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @param {*} [accumulator] The initial value.
+ * @param {boolean} [initAccum] Specify using the first element of `array` as
+ *  the initial value.
+ * @returns {*} Returns the accumulated value.
+ */
+function arrayReduce(array, iteratee, accumulator, initAccum) {
+  var index = -1,
+      length = array ? array.length : 0;
+
+  if (initAccum && length) {
+    accumulator = array[++index];
+  }
+  while (++index < length) {
+    accumulator = iteratee(accumulator, array[index], index, array);
+  }
+  return accumulator;
+}
+
+/**
+ * The base implementation of `_.times` without support for iteratee shorthands
+ * or max array length checks.
+ *
+ * @private
+ * @param {number} n The number of times to invoke `iteratee`.
+ * @param {Function} iteratee The function invoked per iteration.
+ * @returns {Array} Returns the array of results.
+ */
+function baseTimes(n, iteratee) {
+  var index = -1,
+      result = Array(n);
+
+  while (++index < n) {
+    result[index] = iteratee(index);
+  }
+  return result;
+}
+
+/**
+ * Gets the value at `key` of `object`.
+ *
+ * @private
+ * @param {Object} [object] The object to query.
+ * @param {string} key The key of the property to get.
+ * @returns {*} Returns the property value.
+ */
+function getValue(object, key) {
+  return object == null ? undefined : object[key];
+}
+
+/**
+ * Checks if `value` is a host object in IE < 9.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a host object, else `false`.
+ */
+function isHostObject(value) {
+  // Many host objects are `Object` objects that can coerce to strings
+  // despite having improperly defined `toString` methods.
+  var result = false;
+  if (value != null && typeof value.toString != 'function') {
+    try {
+      result = !!(value + '');
+    } catch (e) {}
+  }
+  return result;
+}
+
+/**
+ * Converts `map` to its key-value pairs.
+ *
+ * @private
+ * @param {Object} map The map to convert.
+ * @returns {Array} Returns the key-value pairs.
+ */
+function mapToArray(map) {
+  var index = -1,
+      result = Array(map.size);
+
+  map.forEach(function(value, key) {
+    result[++index] = [key, value];
+  });
+  return result;
+}
+
+/**
+ * Creates a unary function that invokes `func` with its argument transformed.
+ *
+ * @private
+ * @param {Function} func The function to wrap.
+ * @param {Function} transform The argument transform.
+ * @returns {Function} Returns the new function.
+ */
+function overArg(func, transform) {
+  return function(arg) {
+    return func(transform(arg));
+  };
+}
+
+/**
+ * Converts `set` to an array of its values.
+ *
+ * @private
+ * @param {Object} set The set to convert.
+ * @returns {Array} Returns the values.
+ */
+function setToArray(set) {
+  var index = -1,
+      result = Array(set.size);
+
+  set.forEach(function(value) {
+    result[++index] = value;
+  });
+  return result;
+}
+
+/** Used for built-in method references. */
+var arrayProto = Array.prototype,
+    funcProto = Function.prototype,
+    objectProto = Object.prototype;
+
+/** Used to detect overreaching core-js shims. */
+var coreJsData = root['__core-js_shared__'];
+
+/** Used to detect methods masquerading as native. */
+var maskSrcKey = (function() {
+  var uid = /[^.]+$/.exec(coreJsData && coreJsData.keys && coreJsData.keys.IE_PROTO || '');
+  return uid ? ('Symbol(src)_1.' + uid) : '';
+}());
+
+/** Used to resolve the decompiled source of functions. */
+var funcToString = funcProto.toString;
+
+/** Used to check objects for own properties. */
+var hasOwnProperty = objectProto.hasOwnProperty;
+
+/**
+ * Used to resolve the
+ * [`toStringTag`](http://ecma-international.org/ecma-262/7.0/#sec-object.prototype.tostring)
+ * of values.
+ */
+var objectToString = objectProto.toString;
+
+/** Used to detect if a method is native. */
+var reIsNative = RegExp('^' +
+  funcToString.call(hasOwnProperty).replace(reRegExpChar, '\\$&')
+  .replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g, '$1.*?') + '$'
+);
+
+/** Built-in value references. */
+var Buffer = moduleExports ? root.Buffer : undefined,
+    Symbol = root.Symbol,
+    Uint8Array = root.Uint8Array,
+    getPrototype = overArg(Object.getPrototypeOf, Object),
+    objectCreate = Object.create,
+    propertyIsEnumerable = objectProto.propertyIsEnumerable,
+    splice = arrayProto.splice;
+
+/* Built-in method references for those with the same name as other `lodash` methods. */
+var nativeGetSymbols = Object.getOwnPropertySymbols,
+    nativeIsBuffer = Buffer ? Buffer.isBuffer : undefined,
+    nativeKeys = overArg(Object.keys, Object);
+
+/* Built-in method references that are verified to be native. */
+var DataView = getNative(root, 'DataView'),
+    Map = getNative(root, 'Map'),
+    Promise = getNative(root, 'Promise'),
+    Set = getNative(root, 'Set'),
+    WeakMap = getNative(root, 'WeakMap'),
+    nativeCreate = getNative(Object, 'create');
+
+/** Used to detect maps, sets, and weakmaps. */
+var dataViewCtorString = toSource(DataView),
+    mapCtorString = toSource(Map),
+    promiseCtorString = toSource(Promise),
+    setCtorString = toSource(Set),
+    weakMapCtorString = toSource(WeakMap);
+
+/** Used to convert symbols to primitives and strings. */
+var symbolProto = Symbol ? Symbol.prototype : undefined,
+    symbolValueOf = symbolProto ? symbolProto.valueOf : undefined;
+
+/**
+ * Creates a hash object.
+ *
+ * @private
+ * @constructor
+ * @param {Array} [entries] The key-value pairs to cache.
+ */
+function Hash(entries) {
+  var index = -1,
+      length = entries ? entries.length : 0;
+
+  this.clear();
+  while (++index < length) {
+    var entry = entries[index];
+    this.set(entry[0], entry[1]);
+  }
+}
+
+/**
+ * Removes all key-value entries from the hash.
+ *
+ * @private
+ * @name clear
+ * @memberOf Hash
+ */
+function hashClear() {
+  this.__data__ = nativeCreate ? nativeCreate(null) : {};
+}
+
+/**
+ * Removes `key` and its value from the hash.
+ *
+ * @private
+ * @name delete
+ * @memberOf Hash
+ * @param {Object} hash The hash to modify.
+ * @param {string} key The key of the value to remove.
+ * @returns {boolean} Returns `true` if the entry was removed, else `false`.
+ */
+function hashDelete(key) {
+  return this.has(key) && delete this.__data__[key];
+}
+
+/**
+ * Gets the hash value for `key`.
+ *
+ * @private
+ * @name get
+ * @memberOf Hash
+ * @param {string} key The key of the value to get.
+ * @returns {*} Returns the entry value.
+ */
+function hashGet(key) {
+  var data = this.__data__;
+  if (nativeCreate) {
+    var result = data[key];
+    return result === HASH_UNDEFINED ? undefined : result;
+  }
+  return hasOwnProperty.call(data, key) ? data[key] : undefined;
+}
+
+/**
+ * Checks if a hash value for `key` exists.
+ *
+ * @private
+ * @name has
+ * @memberOf Hash
+ * @param {string} key The key of the entry to check.
+ * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
+ */
+function hashHas(key) {
+  var data = this.__data__;
+  return nativeCreate ? data[key] !== undefined : hasOwnProperty.call(data, key);
+}
+
+/**
+ * Sets the hash `key` to `value`.
+ *
+ * @private
+ * @name set
+ * @memberOf Hash
+ * @param {string} key The key of the value to set.
+ * @param {*} value The value to set.
+ * @returns {Object} Returns the hash instance.
+ */
+function hashSet(key, value) {
+  var data = this.__data__;
+  data[key] = (nativeCreate && value === undefined) ? HASH_UNDEFINED : value;
+  return this;
+}
+
+// Add methods to `Hash`.
+Hash.prototype.clear = hashClear;
+Hash.prototype['delete'] = hashDelete;
+Hash.prototype.get = hashGet;
+Hash.prototype.has = hashHas;
+Hash.prototype.set = hashSet;
+
+/**
+ * Creates an list cache object.
+ *
+ * @private
+ * @constructor
+ * @param {Array} [entries] The key-value pairs to cache.
+ */
+function ListCache(entries) {
+  var index = -1,
+      length = entries ? entries.length : 0;
+
+  this.clear();
+  while (++index < length) {
+    var entry = entries[index];
+    this.set(entry[0], entry[1]);
+  }
+}
+
+/**
+ * Removes all key-value entries from the list cache.
+ *
+ * @private
+ * @name clear
+ * @memberOf ListCache
+ */
+function listCacheClear() {
+  this.__data__ = [];
+}
+
+/**
+ * Removes `key` and its value from the list cache.
+ *
+ * @private
+ * @name delete
+ * @memberOf ListCache
+ * @param {string} key The key of the value to remove.
+ * @returns {boolean} Returns `true` if the entry was removed, else `false`.
+ */
+function listCacheDelete(key) {
+  var data = this.__data__,
+      index = assocIndexOf(data, key);
+
+  if (index < 0) {
+    return false;
+  }
+  var lastIndex = data.length - 1;
+  if (index == lastIndex) {
+    data.pop();
+  } else {
+    splice.call(data, index, 1);
+  }
+  return true;
+}
+
+/**
+ * Gets the list cache value for `key`.
+ *
+ * @private
+ * @name get
+ * @memberOf ListCache
+ * @param {string} key The key of the value to get.
+ * @returns {*} Returns the entry value.
+ */
+function listCacheGet(key) {
+  var data = this.__data__,
+      index = assocIndexOf(data, key);
+
+  return index < 0 ? undefined : data[index][1];
+}
+
+/**
+ * Checks if a list cache value for `key` exists.
+ *
+ * @private
+ * @name has
+ * @memberOf ListCache
+ * @param {string} key The key of the entry to check.
+ * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
+ */
+function listCacheHas(key) {
+  return assocIndexOf(this.__data__, key) > -1;
+}
+
+/**
+ * Sets the list cache `key` to `value`.
+ *
+ * @private
+ * @name set
+ * @memberOf ListCache
+ * @param {string} key The key of the value to set.
+ * @param {*} value The value to set.
+ * @returns {Object} Returns the list cache instance.
+ */
+function listCacheSet(key, value) {
+  var data = this.__data__,
+      index = assocIndexOf(data, key);
+
+  if (index < 0) {
+    data.push([key, value]);
+  } else {
+    data[index][1] = value;
+  }
+  return this;
+}
+
+// Add methods to `ListCache`.
+ListCache.prototype.clear = listCacheClear;
+ListCache.prototype['delete'] = listCacheDelete;
+ListCache.prototype.get = listCacheGet;
+ListCache.prototype.has = listCacheHas;
+ListCache.prototype.set = listCacheSet;
+
+/**
+ * Creates a map cache object to store key-value pairs.
+ *
+ * @private
+ * @constructor
+ * @param {Array} [entries] The key-value pairs to cache.
+ */
+function MapCache(entries) {
+  var index = -1,
+      length = entries ? entries.length : 0;
+
+  this.clear();
+  while (++index < length) {
+    var entry = entries[index];
+    this.set(entry[0], entry[1]);
+  }
+}
+
+/**
+ * Removes all key-value entries from the map.
+ *
+ * @private
+ * @name clear
+ * @memberOf MapCache
+ */
+function mapCacheClear() {
+  this.__data__ = {
+    'hash': new Hash,
+    'map': new (Map || ListCache),
+    'string': new Hash
+  };
+}
+
+/**
+ * Removes `key` and its value from the map.
+ *
+ * @private
+ * @name delete
+ * @memberOf MapCache
+ * @param {string} key The key of the value to remove.
+ * @returns {boolean} Returns `true` if the entry was removed, else `false`.
+ */
+function mapCacheDelete(key) {
+  return getMapData(this, key)['delete'](key);
+}
+
+/**
+ * Gets the map value for `key`.
+ *
+ * @private
+ * @name get
+ * @memberOf MapCache
+ * @param {string} key The key of the value to get.
+ * @returns {*} Returns the entry value.
+ */
+function mapCacheGet(key) {
+  return getMapData(this, key).get(key);
+}
+
+/**
+ * Checks if a map value for `key` exists.
+ *
+ * @private
+ * @name has
+ * @memberOf MapCache
+ * @param {string} key The key of the entry to check.
+ * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
+ */
+function mapCacheHas(key) {
+  return getMapData(this, key).has(key);
+}
+
+/**
+ * Sets the map `key` to `value`.
+ *
+ * @private
+ * @name set
+ * @memberOf MapCache
+ * @param {string} key The key of the value to set.
+ * @param {*} value The value to set.
+ * @returns {Object} Returns the map cache instance.
+ */
+function mapCacheSet(key, value) {
+  getMapData(this, key).set(key, value);
+  return this;
+}
+
+// Add methods to `MapCache`.
+MapCache.prototype.clear = mapCacheClear;
+MapCache.prototype['delete'] = mapCacheDelete;
+MapCache.prototype.get = mapCacheGet;
+MapCache.prototype.has = mapCacheHas;
+MapCache.prototype.set = mapCacheSet;
+
+/**
+ * Creates a stack cache object to store key-value pairs.
+ *
+ * @private
+ * @constructor
+ * @param {Array} [entries] The key-value pairs to cache.
+ */
+function Stack(entries) {
+  this.__data__ = new ListCache(entries);
+}
+
+/**
+ * Removes all key-value entries from the stack.
+ *
+ * @private
+ * @name clear
+ * @memberOf Stack
+ */
+function stackClear() {
+  this.__data__ = new ListCache;
+}
+
+/**
+ * Removes `key` and its value from the stack.
+ *
+ * @private
+ * @name delete
+ * @memberOf Stack
+ * @param {string} key The key of the value to remove.
+ * @returns {boolean} Returns `true` if the entry was removed, else `false`.
+ */
+function stackDelete(key) {
+  return this.__data__['delete'](key);
+}
+
+/**
+ * Gets the stack value for `key`.
+ *
+ * @private
+ * @name get
+ * @memberOf Stack
+ * @param {string} key The key of the value to get.
+ * @returns {*} Returns the entry value.
+ */
+function stackGet(key) {
+  return this.__data__.get(key);
+}
+
+/**
+ * Checks if a stack value for `key` exists.
+ *
+ * @private
+ * @name has
+ * @memberOf Stack
+ * @param {string} key The key of the entry to check.
+ * @returns {boolean} Returns `true` if an entry for `key` exists, else `false`.
+ */
+function stackHas(key) {
+  return this.__data__.has(key);
+}
+
+/**
+ * Sets the stack `key` to `value`.
+ *
+ * @private
+ * @name set
+ * @memberOf Stack
+ * @param {string} key The key of the value to set.
+ * @param {*} value The value to set.
+ * @returns {Object} Returns the stack cache instance.
+ */
+function stackSet(key, value) {
+  var cache = this.__data__;
+  if (cache instanceof ListCache) {
+    var pairs = cache.__data__;
+    if (!Map || (pairs.length < LARGE_ARRAY_SIZE - 1)) {
+      pairs.push([key, value]);
+      return this;
+    }
+    cache = this.__data__ = new MapCache(pairs);
+  }
+  cache.set(key, value);
+  return this;
+}
+
+// Add methods to `Stack`.
+Stack.prototype.clear = stackClear;
+Stack.prototype['delete'] = stackDelete;
+Stack.prototype.get = stackGet;
+Stack.prototype.has = stackHas;
+Stack.prototype.set = stackSet;
+
+/**
+ * Creates an array of the enumerable property names of the array-like `value`.
+ *
+ * @private
+ * @param {*} value The value to query.
+ * @param {boolean} inherited Specify returning inherited property names.
+ * @returns {Array} Returns the array of property names.
+ */
+function arrayLikeKeys(value, inherited) {
+  // Safari 8.1 makes `arguments.callee` enumerable in strict mode.
+  // Safari 9 makes `arguments.length` enumerable in strict mode.
+  var result = (isArray(value) || isArguments(value))
+    ? baseTimes(value.length, String)
+    : [];
+
+  var length = result.length,
+      skipIndexes = !!length;
+
+  for (var key in value) {
+    if ((inherited || hasOwnProperty.call(value, key)) &&
+        !(skipIndexes && (key == 'length' || isIndex(key, length)))) {
+      result.push(key);
+    }
+  }
+  return result;
+}
+
+/**
+ * Assigns `value` to `key` of `object` if the existing value is not equivalent
+ * using [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
+ * for equality comparisons.
+ *
+ * @private
+ * @param {Object} object The object to modify.
+ * @param {string} key The key of the property to assign.
+ * @param {*} value The value to assign.
+ */
+function assignValue(object, key, value) {
+  var objValue = object[key];
+  if (!(hasOwnProperty.call(object, key) && eq(objValue, value)) ||
+      (value === undefined && !(key in object))) {
+    object[key] = value;
+  }
+}
+
+/**
+ * Gets the index at which the `key` is found in `array` of key-value pairs.
+ *
+ * @private
+ * @param {Array} array The array to inspect.
+ * @param {*} key The key to search for.
+ * @returns {number} Returns the index of the matched value, else `-1`.
+ */
+function assocIndexOf(array, key) {
+  var length = array.length;
+  while (length--) {
+    if (eq(array[length][0], key)) {
+      return length;
+    }
+  }
+  return -1;
+}
+
+/**
+ * The base implementation of `_.assign` without support for multiple sources
+ * or `customizer` functions.
+ *
+ * @private
+ * @param {Object} object The destination object.
+ * @param {Object} source The source object.
+ * @returns {Object} Returns `object`.
+ */
+function baseAssign(object, source) {
+  return object && copyObject(source, keys(source), object);
+}
+
+/**
+ * The base implementation of `_.clone` and `_.cloneDeep` which tracks
+ * traversed objects.
+ *
+ * @private
+ * @param {*} value The value to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @param {boolean} [isFull] Specify a clone including symbols.
+ * @param {Function} [customizer] The function to customize cloning.
+ * @param {string} [key] The key of `value`.
+ * @param {Object} [object] The parent object of `value`.
+ * @param {Object} [stack] Tracks traversed objects and their clone counterparts.
+ * @returns {*} Returns the cloned value.
+ */
+function baseClone(value, isDeep, isFull, customizer, key, object, stack) {
+  var result;
+  if (customizer) {
+    result = object ? customizer(value, key, object, stack) : customizer(value);
+  }
+  if (result !== undefined) {
+    return result;
+  }
+  if (!isObject(value)) {
+    return value;
+  }
+  var isArr = isArray(value);
+  if (isArr) {
+    result = initCloneArray(value);
+    if (!isDeep) {
+      return copyArray(value, result);
+    }
+  } else {
+    var tag = getTag(value),
+        isFunc = tag == funcTag || tag == genTag;
+
+    if (isBuffer(value)) {
+      return cloneBuffer(value, isDeep);
+    }
+    if (tag == objectTag || tag == argsTag || (isFunc && !object)) {
+      if (isHostObject(value)) {
+        return object ? value : {};
+      }
+      result = initCloneObject(isFunc ? {} : value);
+      if (!isDeep) {
+        return copySymbols(value, baseAssign(result, value));
+      }
+    } else {
+      if (!cloneableTags[tag]) {
+        return object ? value : {};
+      }
+      result = initCloneByTag(value, tag, baseClone, isDeep);
+    }
+  }
+  // Check for circular references and return its corresponding clone.
+  stack || (stack = new Stack);
+  var stacked = stack.get(value);
+  if (stacked) {
+    return stacked;
+  }
+  stack.set(value, result);
+
+  if (!isArr) {
+    var props = isFull ? getAllKeys(value) : keys(value);
+  }
+  arrayEach(props || value, function(subValue, key) {
+    if (props) {
+      key = subValue;
+      subValue = value[key];
+    }
+    // Recursively populate clone (susceptible to call stack limits).
+    assignValue(result, key, baseClone(subValue, isDeep, isFull, customizer, key, value, stack));
+  });
+  return result;
+}
+
+/**
+ * The base implementation of `_.create` without support for assigning
+ * properties to the created object.
+ *
+ * @private
+ * @param {Object} prototype The object to inherit from.
+ * @returns {Object} Returns the new object.
+ */
+function baseCreate(proto) {
+  return isObject(proto) ? objectCreate(proto) : {};
+}
+
+/**
+ * The base implementation of `getAllKeys` and `getAllKeysIn` which uses
+ * `keysFunc` and `symbolsFunc` to get the enumerable property names and
+ * symbols of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @param {Function} keysFunc The function to get the keys of `object`.
+ * @param {Function} symbolsFunc The function to get the symbols of `object`.
+ * @returns {Array} Returns the array of property names and symbols.
+ */
+function baseGetAllKeys(object, keysFunc, symbolsFunc) {
+  var result = keysFunc(object);
+  return isArray(object) ? result : arrayPush(result, symbolsFunc(object));
+}
+
+/**
+ * The base implementation of `getTag`.
+ *
+ * @private
+ * @param {*} value The value to query.
+ * @returns {string} Returns the `toStringTag`.
+ */
+function baseGetTag(value) {
+  return objectToString.call(value);
+}
+
+/**
+ * The base implementation of `_.isNative` without bad shim checks.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a native function,
+ *  else `false`.
+ */
+function baseIsNative(value) {
+  if (!isObject(value) || isMasked(value)) {
+    return false;
+  }
+  var pattern = (isFunction(value) || isHostObject(value)) ? reIsNative : reIsHostCtor;
+  return pattern.test(toSource(value));
+}
+
+/**
+ * The base implementation of `_.keys` which doesn't treat sparse arrays as dense.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ */
+function baseKeys(object) {
+  if (!isPrototype(object)) {
+    return nativeKeys(object);
+  }
+  var result = [];
+  for (var key in Object(object)) {
+    if (hasOwnProperty.call(object, key) && key != 'constructor') {
+      result.push(key);
+    }
+  }
+  return result;
+}
+
+/**
+ * Creates a clone of  `buffer`.
+ *
+ * @private
+ * @param {Buffer} buffer The buffer to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Buffer} Returns the cloned buffer.
+ */
+function cloneBuffer(buffer, isDeep) {
+  if (isDeep) {
+    return buffer.slice();
+  }
+  var result = new buffer.constructor(buffer.length);
+  buffer.copy(result);
+  return result;
+}
+
+/**
+ * Creates a clone of `arrayBuffer`.
+ *
+ * @private
+ * @param {ArrayBuffer} arrayBuffer The array buffer to clone.
+ * @returns {ArrayBuffer} Returns the cloned array buffer.
+ */
+function cloneArrayBuffer(arrayBuffer) {
+  var result = new arrayBuffer.constructor(arrayBuffer.byteLength);
+  new Uint8Array(result).set(new Uint8Array(arrayBuffer));
+  return result;
+}
+
+/**
+ * Creates a clone of `dataView`.
+ *
+ * @private
+ * @param {Object} dataView The data view to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the cloned data view.
+ */
+function cloneDataView(dataView, isDeep) {
+  var buffer = isDeep ? cloneArrayBuffer(dataView.buffer) : dataView.buffer;
+  return new dataView.constructor(buffer, dataView.byteOffset, dataView.byteLength);
+}
+
+/**
+ * Creates a clone of `map`.
+ *
+ * @private
+ * @param {Object} map The map to clone.
+ * @param {Function} cloneFunc The function to clone values.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the cloned map.
+ */
+function cloneMap(map, isDeep, cloneFunc) {
+  var array = isDeep ? cloneFunc(mapToArray(map), true) : mapToArray(map);
+  return arrayReduce(array, addMapEntry, new map.constructor);
+}
+
+/**
+ * Creates a clone of `regexp`.
+ *
+ * @private
+ * @param {Object} regexp The regexp to clone.
+ * @returns {Object} Returns the cloned regexp.
+ */
+function cloneRegExp(regexp) {
+  var result = new regexp.constructor(regexp.source, reFlags.exec(regexp));
+  result.lastIndex = regexp.lastIndex;
+  return result;
+}
+
+/**
+ * Creates a clone of `set`.
+ *
+ * @private
+ * @param {Object} set The set to clone.
+ * @param {Function} cloneFunc The function to clone values.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the cloned set.
+ */
+function cloneSet(set, isDeep, cloneFunc) {
+  var array = isDeep ? cloneFunc(setToArray(set), true) : setToArray(set);
+  return arrayReduce(array, addSetEntry, new set.constructor);
+}
+
+/**
+ * Creates a clone of the `symbol` object.
+ *
+ * @private
+ * @param {Object} symbol The symbol object to clone.
+ * @returns {Object} Returns the cloned symbol object.
+ */
+function cloneSymbol(symbol) {
+  return symbolValueOf ? Object(symbolValueOf.call(symbol)) : {};
+}
+
+/**
+ * Creates a clone of `typedArray`.
+ *
+ * @private
+ * @param {Object} typedArray The typed array to clone.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the cloned typed array.
+ */
+function cloneTypedArray(typedArray, isDeep) {
+  var buffer = isDeep ? cloneArrayBuffer(typedArray.buffer) : typedArray.buffer;
+  return new typedArray.constructor(buffer, typedArray.byteOffset, typedArray.length);
+}
+
+/**
+ * Copies the values of `source` to `array`.
+ *
+ * @private
+ * @param {Array} source The array to copy values from.
+ * @param {Array} [array=[]] The array to copy values to.
+ * @returns {Array} Returns `array`.
+ */
+function copyArray(source, array) {
+  var index = -1,
+      length = source.length;
+
+  array || (array = Array(length));
+  while (++index < length) {
+    array[index] = source[index];
+  }
+  return array;
+}
+
+/**
+ * Copies properties of `source` to `object`.
+ *
+ * @private
+ * @param {Object} source The object to copy properties from.
+ * @param {Array} props The property identifiers to copy.
+ * @param {Object} [object={}] The object to copy properties to.
+ * @param {Function} [customizer] The function to customize copied values.
+ * @returns {Object} Returns `object`.
+ */
+function copyObject(source, props, object, customizer) {
+  object || (object = {});
+
+  var index = -1,
+      length = props.length;
+
+  while (++index < length) {
+    var key = props[index];
+
+    var newValue = customizer
+      ? customizer(object[key], source[key], key, object, source)
+      : undefined;
+
+    assignValue(object, key, newValue === undefined ? source[key] : newValue);
+  }
+  return object;
+}
+
+/**
+ * Copies own symbol properties of `source` to `object`.
+ *
+ * @private
+ * @param {Object} source The object to copy symbols from.
+ * @param {Object} [object={}] The object to copy symbols to.
+ * @returns {Object} Returns `object`.
+ */
+function copySymbols(source, object) {
+  return copyObject(source, getSymbols(source), object);
+}
+
+/**
+ * Creates an array of own enumerable property names and symbols of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names and symbols.
+ */
+function getAllKeys(object) {
+  return baseGetAllKeys(object, keys, getSymbols);
+}
+
+/**
+ * Gets the data for `map`.
+ *
+ * @private
+ * @param {Object} map The map to query.
+ * @param {string} key The reference key.
+ * @returns {*} Returns the map data.
+ */
+function getMapData(map, key) {
+  var data = map.__data__;
+  return isKeyable(key)
+    ? data[typeof key == 'string' ? 'string' : 'hash']
+    : data.map;
+}
+
+/**
+ * Gets the native function at `key` of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @param {string} key The key of the method to get.
+ * @returns {*} Returns the function if it's native, else `undefined`.
+ */
+function getNative(object, key) {
+  var value = getValue(object, key);
+  return baseIsNative(value) ? value : undefined;
+}
+
+/**
+ * Creates an array of the own enumerable symbol properties of `object`.
+ *
+ * @private
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of symbols.
+ */
+var getSymbols = nativeGetSymbols ? overArg(nativeGetSymbols, Object) : stubArray;
+
+/**
+ * Gets the `toStringTag` of `value`.
+ *
+ * @private
+ * @param {*} value The value to query.
+ * @returns {string} Returns the `toStringTag`.
+ */
+var getTag = baseGetTag;
+
+// Fallback for data views, maps, sets, and weak maps in IE 11,
+// for data views in Edge < 14, and promises in Node.js.
+if ((DataView && getTag(new DataView(new ArrayBuffer(1))) != dataViewTag) ||
+    (Map && getTag(new Map) != mapTag) ||
+    (Promise && getTag(Promise.resolve()) != promiseTag) ||
+    (Set && getTag(new Set) != setTag) ||
+    (WeakMap && getTag(new WeakMap) != weakMapTag)) {
+  getTag = function(value) {
+    var result = objectToString.call(value),
+        Ctor = result == objectTag ? value.constructor : undefined,
+        ctorString = Ctor ? toSource(Ctor) : undefined;
+
+    if (ctorString) {
+      switch (ctorString) {
+        case dataViewCtorString: return dataViewTag;
+        case mapCtorString: return mapTag;
+        case promiseCtorString: return promiseTag;
+        case setCtorString: return setTag;
+        case weakMapCtorString: return weakMapTag;
+      }
+    }
+    return result;
+  };
+}
+
+/**
+ * Initializes an array clone.
+ *
+ * @private
+ * @param {Array} array The array to clone.
+ * @returns {Array} Returns the initialized clone.
+ */
+function initCloneArray(array) {
+  var length = array.length,
+      result = array.constructor(length);
+
+  // Add properties assigned by `RegExp#exec`.
+  if (length && typeof array[0] == 'string' && hasOwnProperty.call(array, 'index')) {
+    result.index = array.index;
+    result.input = array.input;
+  }
+  return result;
+}
+
+/**
+ * Initializes an object clone.
+ *
+ * @private
+ * @param {Object} object The object to clone.
+ * @returns {Object} Returns the initialized clone.
+ */
+function initCloneObject(object) {
+  return (typeof object.constructor == 'function' && !isPrototype(object))
+    ? baseCreate(getPrototype(object))
+    : {};
+}
+
+/**
+ * Initializes an object clone based on its `toStringTag`.
+ *
+ * **Note:** This function only supports cloning values with tags of
+ * `Boolean`, `Date`, `Error`, `Number`, `RegExp`, or `String`.
+ *
+ * @private
+ * @param {Object} object The object to clone.
+ * @param {string} tag The `toStringTag` of the object to clone.
+ * @param {Function} cloneFunc The function to clone values.
+ * @param {boolean} [isDeep] Specify a deep clone.
+ * @returns {Object} Returns the initialized clone.
+ */
+function initCloneByTag(object, tag, cloneFunc, isDeep) {
+  var Ctor = object.constructor;
+  switch (tag) {
+    case arrayBufferTag:
+      return cloneArrayBuffer(object);
+
+    case boolTag:
+    case dateTag:
+      return new Ctor(+object);
+
+    case dataViewTag:
+      return cloneDataView(object, isDeep);
+
+    case float32Tag: case float64Tag:
+    case int8Tag: case int16Tag: case int32Tag:
+    case uint8Tag: case uint8ClampedTag: case uint16Tag: case uint32Tag:
+      return cloneTypedArray(object, isDeep);
+
+    case mapTag:
+      return cloneMap(object, isDeep, cloneFunc);
+
+    case numberTag:
+    case stringTag:
+      return new Ctor(object);
+
+    case regexpTag:
+      return cloneRegExp(object);
+
+    case setTag:
+      return cloneSet(object, isDeep, cloneFunc);
+
+    case symbolTag:
+      return cloneSymbol(object);
+  }
+}
+
+/**
+ * Checks if `value` is a valid array-like index.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @param {number} [length=MAX_SAFE_INTEGER] The upper bounds of a valid index.
+ * @returns {boolean} Returns `true` if `value` is a valid index, else `false`.
+ */
+function isIndex(value, length) {
+  length = length == null ? MAX_SAFE_INTEGER : length;
+  return !!length &&
+    (typeof value == 'number' || reIsUint.test(value)) &&
+    (value > -1 && value % 1 == 0 && value < length);
+}
+
+/**
+ * Checks if `value` is suitable for use as unique object key.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is suitable, else `false`.
+ */
+function isKeyable(value) {
+  var type = typeof value;
+  return (type == 'string' || type == 'number' || type == 'symbol' || type == 'boolean')
+    ? (value !== '__proto__')
+    : (value === null);
+}
+
+/**
+ * Checks if `func` has its source masked.
+ *
+ * @private
+ * @param {Function} func The function to check.
+ * @returns {boolean} Returns `true` if `func` is masked, else `false`.
+ */
+function isMasked(func) {
+  return !!maskSrcKey && (maskSrcKey in func);
+}
+
+/**
+ * Checks if `value` is likely a prototype object.
+ *
+ * @private
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a prototype, else `false`.
+ */
+function isPrototype(value) {
+  var Ctor = value && value.constructor,
+      proto = (typeof Ctor == 'function' && Ctor.prototype) || objectProto;
+
+  return value === proto;
+}
+
+/**
+ * Converts `func` to its source code.
+ *
+ * @private
+ * @param {Function} func The function to process.
+ * @returns {string} Returns the source code.
+ */
+function toSource(func) {
+  if (func != null) {
+    try {
+      return funcToString.call(func);
+    } catch (e) {}
+    try {
+      return (func + '');
+    } catch (e) {}
+  }
+  return '';
+}
+
+/**
+ * This method is like `_.clone` except that it recursively clones `value`.
+ *
+ * @static
+ * @memberOf _
+ * @since 1.0.0
+ * @category Lang
+ * @param {*} value The value to recursively clone.
+ * @returns {*} Returns the deep cloned value.
+ * @see _.clone
+ * @example
+ *
+ * var objects = [{ 'a': 1 }, { 'b': 2 }];
+ *
+ * var deep = _.cloneDeep(objects);
+ * console.log(deep[0] === objects[0]);
+ * // => false
+ */
+function cloneDeep(value) {
+  return baseClone(value, true, true);
+}
+
+/**
+ * Performs a
+ * [`SameValueZero`](http://ecma-international.org/ecma-262/7.0/#sec-samevaluezero)
+ * comparison between two values to determine if they are equivalent.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to compare.
+ * @param {*} other The other value to compare.
+ * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
+ * @example
+ *
+ * var object = { 'a': 1 };
+ * var other = { 'a': 1 };
+ *
+ * _.eq(object, object);
+ * // => true
+ *
+ * _.eq(object, other);
+ * // => false
+ *
+ * _.eq('a', 'a');
+ * // => true
+ *
+ * _.eq('a', Object('a'));
+ * // => false
+ *
+ * _.eq(NaN, NaN);
+ * // => true
+ */
+function eq(value, other) {
+  return value === other || (value !== value && other !== other);
+}
+
+/**
+ * Checks if `value` is likely an `arguments` object.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an `arguments` object,
+ *  else `false`.
+ * @example
+ *
+ * _.isArguments(function() { return arguments; }());
+ * // => true
+ *
+ * _.isArguments([1, 2, 3]);
+ * // => false
+ */
+function isArguments(value) {
+  // Safari 8.1 makes `arguments.callee` enumerable in strict mode.
+  return isArrayLikeObject(value) && hasOwnProperty.call(value, 'callee') &&
+    (!propertyIsEnumerable.call(value, 'callee') || objectToString.call(value) == argsTag);
+}
+
+/**
+ * Checks if `value` is classified as an `Array` object.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an array, else `false`.
+ * @example
+ *
+ * _.isArray([1, 2, 3]);
+ * // => true
+ *
+ * _.isArray(document.body.children);
+ * // => false
+ *
+ * _.isArray('abc');
+ * // => false
+ *
+ * _.isArray(_.noop);
+ * // => false
+ */
+var isArray = Array.isArray;
+
+/**
+ * Checks if `value` is array-like. A value is considered array-like if it's
+ * not a function and has a `value.length` that's an integer greater than or
+ * equal to `0` and less than or equal to `Number.MAX_SAFE_INTEGER`.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is array-like, else `false`.
+ * @example
+ *
+ * _.isArrayLike([1, 2, 3]);
+ * // => true
+ *
+ * _.isArrayLike(document.body.children);
+ * // => true
+ *
+ * _.isArrayLike('abc');
+ * // => true
+ *
+ * _.isArrayLike(_.noop);
+ * // => false
+ */
+function isArrayLike(value) {
+  return value != null && isLength(value.length) && !isFunction(value);
+}
+
+/**
+ * This method is like `_.isArrayLike` except that it also checks if `value`
+ * is an object.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an array-like object,
+ *  else `false`.
+ * @example
+ *
+ * _.isArrayLikeObject([1, 2, 3]);
+ * // => true
+ *
+ * _.isArrayLikeObject(document.body.children);
+ * // => true
+ *
+ * _.isArrayLikeObject('abc');
+ * // => false
+ *
+ * _.isArrayLikeObject(_.noop);
+ * // => false
+ */
+function isArrayLikeObject(value) {
+  return isObjectLike(value) && isArrayLike(value);
+}
+
+/**
+ * Checks if `value` is a buffer.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.3.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a buffer, else `false`.
+ * @example
+ *
+ * _.isBuffer(new Buffer(2));
+ * // => true
+ *
+ * _.isBuffer(new Uint8Array(2));
+ * // => false
+ */
+var isBuffer = nativeIsBuffer || stubFalse;
+
+/**
+ * Checks if `value` is classified as a `Function` object.
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a function, else `false`.
+ * @example
+ *
+ * _.isFunction(_);
+ * // => true
+ *
+ * _.isFunction(/abc/);
+ * // => false
+ */
+function isFunction(value) {
+  // The use of `Object#toString` avoids issues with the `typeof` operator
+  // in Safari 8-9 which returns 'object' for typed array and other constructors.
+  var tag = isObject(value) ? objectToString.call(value) : '';
+  return tag == funcTag || tag == genTag;
+}
+
+/**
+ * Checks if `value` is a valid array-like length.
+ *
+ * **Note:** This method is loosely based on
+ * [`ToLength`](http://ecma-international.org/ecma-262/7.0/#sec-tolength).
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is a valid length, else `false`.
+ * @example
+ *
+ * _.isLength(3);
+ * // => true
+ *
+ * _.isLength(Number.MIN_VALUE);
+ * // => false
+ *
+ * _.isLength(Infinity);
+ * // => false
+ *
+ * _.isLength('3');
+ * // => false
+ */
+function isLength(value) {
+  return typeof value == 'number' &&
+    value > -1 && value % 1 == 0 && value <= MAX_SAFE_INTEGER;
+}
+
+/**
+ * Checks if `value` is the
+ * [language type](http://www.ecma-international.org/ecma-262/7.0/#sec-ecmascript-language-types)
+ * of `Object`. (e.g. arrays, functions, objects, regexes, `new Number(0)`, and `new String('')`)
+ *
+ * @static
+ * @memberOf _
+ * @since 0.1.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is an object, else `false`.
+ * @example
+ *
+ * _.isObject({});
+ * // => true
+ *
+ * _.isObject([1, 2, 3]);
+ * // => true
+ *
+ * _.isObject(_.noop);
+ * // => true
+ *
+ * _.isObject(null);
+ * // => false
+ */
+function isObject(value) {
+  var type = typeof value;
+  return !!value && (type == 'object' || type == 'function');
+}
+
+/**
+ * Checks if `value` is object-like. A value is object-like if it's not `null`
+ * and has a `typeof` result of "object".
+ *
+ * @static
+ * @memberOf _
+ * @since 4.0.0
+ * @category Lang
+ * @param {*} value The value to check.
+ * @returns {boolean} Returns `true` if `value` is object-like, else `false`.
+ * @example
+ *
+ * _.isObjectLike({});
+ * // => true
+ *
+ * _.isObjectLike([1, 2, 3]);
+ * // => true
+ *
+ * _.isObjectLike(_.noop);
+ * // => false
+ *
+ * _.isObjectLike(null);
+ * // => false
+ */
+function isObjectLike(value) {
+  return !!value && typeof value == 'object';
+}
+
+/**
+ * Creates an array of the own enumerable property names of `object`.
+ *
+ * **Note:** Non-object values are coerced to objects. See the
+ * [ES spec](http://ecma-international.org/ecma-262/7.0/#sec-object.keys)
+ * for more details.
+ *
+ * @static
+ * @since 0.1.0
+ * @memberOf _
+ * @category Object
+ * @param {Object} object The object to query.
+ * @returns {Array} Returns the array of property names.
+ * @example
+ *
+ * function Foo() {
+ *   this.a = 1;
+ *   this.b = 2;
+ * }
+ *
+ * Foo.prototype.c = 3;
+ *
+ * _.keys(new Foo);
+ * // => ['a', 'b'] (iteration order is not guaranteed)
+ *
+ * _.keys('hi');
+ * // => ['0', '1']
+ */
+function keys(object) {
+  return isArrayLike(object) ? arrayLikeKeys(object) : baseKeys(object);
+}
+
+/**
+ * This method returns a new empty array.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.13.0
+ * @category Util
+ * @returns {Array} Returns the new empty array.
+ * @example
+ *
+ * var arrays = _.times(2, _.stubArray);
+ *
+ * console.log(arrays);
+ * // => [[], []]
+ *
+ * console.log(arrays[0] === arrays[1]);
+ * // => false
+ */
+function stubArray() {
+  return [];
+}
+
+/**
+ * This method returns `false`.
+ *
+ * @static
+ * @memberOf _
+ * @since 4.13.0
+ * @category Util
+ * @returns {boolean} Returns `false`.
+ * @example
+ *
+ * _.times(2, _.stubFalse);
+ * // => [false, false]
+ */
+function stubFalse() {
+  return false;
+}
+
+module.exports = cloneDeep;
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],74:[function(require,module,exports){
 var support = require('webrtcsupport');
 
 
@@ -7903,7 +10537,7 @@ GainController.prototype.on = function () {
 
 module.exports = GainController;
 
-},{"webrtcsupport":70}],70:[function(require,module,exports){
+},{"webrtcsupport":75}],75:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var version;
@@ -7955,7 +10589,7 @@ module.exports = {
     getUserMedia: getUserMedia
 };
 
-},{}],71:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
 var l = methods.length;
 var fn = function () {};
@@ -7967,7 +10601,7 @@ while (l--) {
 
 module.exports = mockconsole;
 
-},{}],72:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 'use strict';
 /* eslint-disable no-unused-vars */
 var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -8052,12 +10686,12 @@ module.exports = shouldUseNative() ? Object.assign : function (target, source) {
 	return to;
 };
 
-},{}],73:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 'use strict';
 
 module.exports = require('react/lib/ReactDOM');
 
-},{"react/lib/ReactDOM":110}],74:[function(require,module,exports){
+},{"react/lib/ReactDOM":115}],79:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -8082,7 +10716,7 @@ var AutoFocusUtils = {
 };
 
 module.exports = AutoFocusUtils;
-},{"./ReactDOMComponentTree":114,"fbjs/lib/focusNode":27}],75:[function(require,module,exports){
+},{"./ReactDOMComponentTree":119,"fbjs/lib/focusNode":31}],80:[function(require,module,exports){
 /**
  * Copyright 2013-present Facebook, Inc.
  * All rights reserved.
@@ -8471,7 +11105,7 @@ var BeforeInputEventPlugin = {
 };
 
 module.exports = BeforeInputEventPlugin;
-},{"./EventConstants":89,"./EventPropagators":93,"./FallbackCompositionState":94,"./SyntheticCompositionEvent":171,"./SyntheticInputEvent":175,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/keyOf":37}],76:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPropagators":98,"./FallbackCompositionState":99,"./SyntheticCompositionEvent":176,"./SyntheticInputEvent":180,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/keyOf":41}],81:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -8620,7 +11254,7 @@ var CSSProperty = {
 };
 
 module.exports = CSSProperty;
-},{}],77:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -8828,7 +11462,7 @@ var CSSPropertyOperations = {
 
 module.exports = CSSPropertyOperations;
 }).call(this,require('_process'))
-},{"./CSSProperty":76,"./ReactInstrumentation":146,"./dangerousStyleValue":189,"_process":284,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/camelizeStyleName":21,"fbjs/lib/hyphenateStyleName":32,"fbjs/lib/memoizeStringOnly":39,"fbjs/lib/warning":43}],78:[function(require,module,exports){
+},{"./CSSProperty":81,"./ReactInstrumentation":151,"./dangerousStyleValue":194,"_process":288,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/camelizeStyleName":25,"fbjs/lib/hyphenateStyleName":36,"fbjs/lib/memoizeStringOnly":43,"fbjs/lib/warning":47}],83:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -8937,7 +11571,7 @@ PooledClass.addPoolingTo(CallbackQueue);
 
 module.exports = CallbackQueue;
 }).call(this,require('_process'))
-},{"./PooledClass":98,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"object-assign":72}],79:[function(require,module,exports){
+},{"./PooledClass":103,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"object-assign":77}],84:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -9263,7 +11897,7 @@ var ChangeEventPlugin = {
 };
 
 module.exports = ChangeEventPlugin;
-},{"./EventConstants":89,"./EventPluginHub":90,"./EventPropagators":93,"./ReactDOMComponentTree":114,"./ReactUpdates":164,"./SyntheticEvent":173,"./getEventTarget":197,"./isEventSupported":204,"./isTextInputElement":205,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/keyOf":37}],80:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPluginHub":95,"./EventPropagators":98,"./ReactDOMComponentTree":119,"./ReactUpdates":169,"./SyntheticEvent":178,"./getEventTarget":202,"./isEventSupported":209,"./isTextInputElement":210,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/keyOf":41}],85:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -9460,7 +12094,7 @@ var DOMChildrenOperations = {
 
 module.exports = DOMChildrenOperations;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":81,"./Danger":85,"./ReactDOMComponentTree":114,"./ReactInstrumentation":146,"./ReactMultiChildUpdateTypes":151,"./createMicrosoftUnsafeLocalFunction":188,"./setInnerHTML":210,"./setTextContent":211,"_process":284}],81:[function(require,module,exports){
+},{"./DOMLazyTree":86,"./Danger":90,"./ReactDOMComponentTree":119,"./ReactInstrumentation":151,"./ReactMultiChildUpdateTypes":156,"./createMicrosoftUnsafeLocalFunction":193,"./setInnerHTML":215,"./setTextContent":216,"_process":288}],86:[function(require,module,exports){
 /**
  * Copyright 2015-present, Facebook, Inc.
  * All rights reserved.
@@ -9579,7 +12213,7 @@ DOMLazyTree.queueHTML = queueHTML;
 DOMLazyTree.queueText = queueText;
 
 module.exports = DOMLazyTree;
-},{"./DOMNamespaces":82,"./createMicrosoftUnsafeLocalFunction":188,"./setInnerHTML":210,"./setTextContent":211}],82:[function(require,module,exports){
+},{"./DOMNamespaces":87,"./createMicrosoftUnsafeLocalFunction":193,"./setInnerHTML":215,"./setTextContent":216}],87:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -9600,7 +12234,7 @@ var DOMNamespaces = {
 };
 
 module.exports = DOMNamespaces;
-},{}],83:[function(require,module,exports){
+},{}],88:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -9809,7 +12443,7 @@ var DOMProperty = {
 
 module.exports = DOMProperty;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],84:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],89:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -10040,7 +12674,7 @@ var DOMPropertyOperations = {
 
 module.exports = DOMPropertyOperations;
 }).call(this,require('_process'))
-},{"./DOMProperty":83,"./ReactDOMComponentTree":114,"./ReactDOMInstrumentation":122,"./ReactInstrumentation":146,"./quoteAttributeValueForBrowser":207,"_process":284,"fbjs/lib/warning":43}],85:[function(require,module,exports){
+},{"./DOMProperty":88,"./ReactDOMComponentTree":119,"./ReactDOMInstrumentation":127,"./ReactInstrumentation":151,"./quoteAttributeValueForBrowser":212,"_process":288,"fbjs/lib/warning":47}],90:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -10091,7 +12725,7 @@ var Danger = {
 
 module.exports = Danger;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":81,"./reactProdInvariant":208,"_process":284,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/createNodesFromMarkup":24,"fbjs/lib/emptyFunction":25,"fbjs/lib/invariant":33}],86:[function(require,module,exports){
+},{"./DOMLazyTree":86,"./reactProdInvariant":213,"_process":288,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/createNodesFromMarkup":28,"fbjs/lib/emptyFunction":29,"fbjs/lib/invariant":37}],91:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -10119,7 +12753,7 @@ var keyOf = require('fbjs/lib/keyOf');
 var DefaultEventPluginOrder = [keyOf({ ResponderEventPlugin: null }), keyOf({ SimpleEventPlugin: null }), keyOf({ TapEventPlugin: null }), keyOf({ EnterLeaveEventPlugin: null }), keyOf({ ChangeEventPlugin: null }), keyOf({ SelectEventPlugin: null }), keyOf({ BeforeInputEventPlugin: null })];
 
 module.exports = DefaultEventPluginOrder;
-},{"fbjs/lib/keyOf":37}],87:[function(require,module,exports){
+},{"fbjs/lib/keyOf":41}],92:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -10170,7 +12804,7 @@ var DisabledInputUtils = {
 };
 
 module.exports = DisabledInputUtils;
-},{}],88:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -10276,7 +12910,7 @@ var EnterLeaveEventPlugin = {
 };
 
 module.exports = EnterLeaveEventPlugin;
-},{"./EventConstants":89,"./EventPropagators":93,"./ReactDOMComponentTree":114,"./SyntheticMouseEvent":177,"fbjs/lib/keyOf":37}],89:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPropagators":98,"./ReactDOMComponentTree":119,"./SyntheticMouseEvent":182,"fbjs/lib/keyOf":41}],94:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -10374,7 +13008,7 @@ var EventConstants = {
 };
 
 module.exports = EventConstants;
-},{"fbjs/lib/keyMirror":36}],90:[function(require,module,exports){
+},{"fbjs/lib/keyMirror":40}],95:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -10618,7 +13252,7 @@ var EventPluginHub = {
 
 module.exports = EventPluginHub;
 }).call(this,require('_process'))
-},{"./EventPluginRegistry":91,"./EventPluginUtils":92,"./ReactErrorUtils":137,"./accumulateInto":184,"./forEachAccumulated":193,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],91:[function(require,module,exports){
+},{"./EventPluginRegistry":96,"./EventPluginUtils":97,"./ReactErrorUtils":142,"./accumulateInto":189,"./forEachAccumulated":198,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],96:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -10868,7 +13502,7 @@ var EventPluginRegistry = {
 
 module.exports = EventPluginRegistry;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],92:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],97:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -11100,7 +13734,7 @@ var EventPluginUtils = {
 
 module.exports = EventPluginUtils;
 }).call(this,require('_process'))
-},{"./EventConstants":89,"./ReactErrorUtils":137,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],93:[function(require,module,exports){
+},{"./EventConstants":94,"./ReactErrorUtils":142,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],98:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -11240,7 +13874,7 @@ var EventPropagators = {
 
 module.exports = EventPropagators;
 }).call(this,require('_process'))
-},{"./EventConstants":89,"./EventPluginHub":90,"./EventPluginUtils":92,"./accumulateInto":184,"./forEachAccumulated":193,"_process":284,"fbjs/lib/warning":43}],94:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPluginHub":95,"./EventPluginUtils":97,"./accumulateInto":189,"./forEachAccumulated":198,"_process":288,"fbjs/lib/warning":47}],99:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -11336,7 +13970,7 @@ _assign(FallbackCompositionState.prototype, {
 PooledClass.addPoolingTo(FallbackCompositionState);
 
 module.exports = FallbackCompositionState;
-},{"./PooledClass":98,"./getTextContentAccessor":201,"object-assign":72}],95:[function(require,module,exports){
+},{"./PooledClass":103,"./getTextContentAccessor":206,"object-assign":77}],100:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -11545,7 +14179,7 @@ var HTMLDOMPropertyConfig = {
 };
 
 module.exports = HTMLDOMPropertyConfig;
-},{"./DOMProperty":83}],96:[function(require,module,exports){
+},{"./DOMProperty":88}],101:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -11605,7 +14239,7 @@ var KeyEscapeUtils = {
 };
 
 module.exports = KeyEscapeUtils;
-},{}],97:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -11743,7 +14377,7 @@ var LinkedValueUtils = {
 
 module.exports = LinkedValueUtils;
 }).call(this,require('_process'))
-},{"./ReactPropTypeLocations":156,"./ReactPropTypes":157,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],98:[function(require,module,exports){
+},{"./ReactPropTypeLocations":161,"./ReactPropTypes":162,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],103:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -11867,7 +14501,7 @@ var PooledClass = {
 
 module.exports = PooledClass;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],99:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],104:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -11957,7 +14591,7 @@ var React = {
 
 module.exports = React;
 }).call(this,require('_process'))
-},{"./ReactChildren":102,"./ReactClass":103,"./ReactComponent":104,"./ReactDOMFactories":118,"./ReactElement":134,"./ReactElementValidator":135,"./ReactPropTypes":157,"./ReactVersion":165,"./onlyChild":206,"_process":284,"fbjs/lib/warning":43,"object-assign":72}],100:[function(require,module,exports){
+},{"./ReactChildren":107,"./ReactClass":108,"./ReactComponent":109,"./ReactDOMFactories":123,"./ReactElement":139,"./ReactElementValidator":140,"./ReactPropTypes":162,"./ReactVersion":170,"./onlyChild":211,"_process":288,"fbjs/lib/warning":47,"object-assign":77}],105:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -12275,7 +14909,7 @@ var ReactBrowserEventEmitter = _assign({}, ReactEventEmitterMixin, {
 });
 
 module.exports = ReactBrowserEventEmitter;
-},{"./EventConstants":89,"./EventPluginRegistry":91,"./ReactEventEmitterMixin":138,"./ViewportMetrics":183,"./getVendorPrefixedEventName":202,"./isEventSupported":204,"object-assign":72}],101:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPluginRegistry":96,"./ReactEventEmitterMixin":143,"./ViewportMetrics":188,"./getVendorPrefixedEventName":207,"./isEventSupported":209,"object-assign":77}],106:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -12412,7 +15046,7 @@ var ReactChildReconciler = {
 
 module.exports = ReactChildReconciler;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":96,"./ReactComponentTreeDevtool":107,"./ReactReconciler":159,"./instantiateReactComponent":203,"./shouldUpdateReactComponent":212,"./traverseAllChildren":213,"_process":284,"fbjs/lib/warning":43}],102:[function(require,module,exports){
+},{"./KeyEscapeUtils":101,"./ReactComponentTreeDevtool":112,"./ReactReconciler":164,"./instantiateReactComponent":208,"./shouldUpdateReactComponent":217,"./traverseAllChildren":218,"_process":288,"fbjs/lib/warning":47}],107:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -12604,7 +15238,7 @@ var ReactChildren = {
 };
 
 module.exports = ReactChildren;
-},{"./PooledClass":98,"./ReactElement":134,"./traverseAllChildren":213,"fbjs/lib/emptyFunction":25}],103:[function(require,module,exports){
+},{"./PooledClass":103,"./ReactElement":139,"./traverseAllChildren":218,"fbjs/lib/emptyFunction":29}],108:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -13332,7 +15966,7 @@ var ReactClass = {
 
 module.exports = ReactClass;
 }).call(this,require('_process'))
-},{"./ReactComponent":104,"./ReactElement":134,"./ReactNoopUpdateQueue":153,"./ReactPropTypeLocationNames":155,"./ReactPropTypeLocations":156,"./reactProdInvariant":208,"_process":284,"fbjs/lib/emptyObject":26,"fbjs/lib/invariant":33,"fbjs/lib/keyMirror":36,"fbjs/lib/keyOf":37,"fbjs/lib/warning":43,"object-assign":72}],104:[function(require,module,exports){
+},{"./ReactComponent":109,"./ReactElement":139,"./ReactNoopUpdateQueue":158,"./ReactPropTypeLocationNames":160,"./ReactPropTypeLocations":161,"./reactProdInvariant":213,"_process":288,"fbjs/lib/emptyObject":30,"fbjs/lib/invariant":37,"fbjs/lib/keyMirror":40,"fbjs/lib/keyOf":41,"fbjs/lib/warning":47,"object-assign":77}],109:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -13453,7 +16087,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactComponent;
 }).call(this,require('_process'))
-},{"./ReactNoopUpdateQueue":153,"./canDefineProperty":186,"./reactProdInvariant":208,"_process":284,"fbjs/lib/emptyObject":26,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],105:[function(require,module,exports){
+},{"./ReactNoopUpdateQueue":158,"./canDefineProperty":191,"./reactProdInvariant":213,"_process":288,"fbjs/lib/emptyObject":30,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],110:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -13493,7 +16127,7 @@ var ReactComponentBrowserEnvironment = {
 };
 
 module.exports = ReactComponentBrowserEnvironment;
-},{"./DOMChildrenOperations":80,"./ReactDOMIDOperations":120}],106:[function(require,module,exports){
+},{"./DOMChildrenOperations":85,"./ReactDOMIDOperations":125}],111:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -13549,7 +16183,7 @@ var ReactComponentEnvironment = {
 
 module.exports = ReactComponentEnvironment;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],107:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],112:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -13770,7 +16404,7 @@ var ReactComponentTreeDevtool = {
 
 module.exports = ReactComponentTreeDevtool;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":109,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],108:[function(require,module,exports){
+},{"./ReactCurrentOwner":114,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],113:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -14666,7 +17300,7 @@ var ReactCompositeComponent = {
 
 module.exports = ReactCompositeComponent;
 }).call(this,require('_process'))
-},{"./ReactComponentEnvironment":106,"./ReactCurrentOwner":109,"./ReactElement":134,"./ReactErrorUtils":137,"./ReactInstanceMap":145,"./ReactInstrumentation":146,"./ReactNodeTypes":152,"./ReactPropTypeLocations":156,"./ReactReconciler":159,"./checkReactTypeSpec":187,"./reactProdInvariant":208,"./shouldUpdateReactComponent":212,"_process":284,"fbjs/lib/emptyObject":26,"fbjs/lib/invariant":33,"fbjs/lib/warning":43,"object-assign":72}],109:[function(require,module,exports){
+},{"./ReactComponentEnvironment":111,"./ReactCurrentOwner":114,"./ReactElement":139,"./ReactErrorUtils":142,"./ReactInstanceMap":150,"./ReactInstrumentation":151,"./ReactNodeTypes":157,"./ReactPropTypeLocations":161,"./ReactReconciler":164,"./checkReactTypeSpec":192,"./reactProdInvariant":213,"./shouldUpdateReactComponent":217,"_process":288,"fbjs/lib/emptyObject":30,"fbjs/lib/invariant":37,"fbjs/lib/warning":47,"object-assign":77}],114:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -14698,7 +17332,7 @@ var ReactCurrentOwner = {
 };
 
 module.exports = ReactCurrentOwner;
-},{}],110:[function(require,module,exports){
+},{}],115:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -14802,7 +17436,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = React;
 }).call(this,require('_process'))
-},{"./ReactDOMComponentTree":114,"./ReactDefaultInjection":133,"./ReactMount":149,"./ReactReconciler":159,"./ReactUpdates":164,"./ReactVersion":165,"./findDOMNode":191,"./getHostComponentFromComposite":198,"./renderSubtreeIntoContainer":209,"_process":284,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/warning":43}],111:[function(require,module,exports){
+},{"./ReactDOMComponentTree":119,"./ReactDefaultInjection":138,"./ReactMount":154,"./ReactReconciler":164,"./ReactUpdates":169,"./ReactVersion":170,"./findDOMNode":196,"./getHostComponentFromComposite":203,"./renderSubtreeIntoContainer":214,"_process":288,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/warning":47}],116:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -14827,7 +17461,7 @@ var ReactDOMButton = {
 };
 
 module.exports = ReactDOMButton;
-},{"./DisabledInputUtils":87}],112:[function(require,module,exports){
+},{"./DisabledInputUtils":92}],117:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -15833,7 +18467,7 @@ _assign(ReactDOMComponent.prototype, ReactDOMComponent.Mixin, ReactMultiChild.Mi
 
 module.exports = ReactDOMComponent;
 }).call(this,require('_process'))
-},{"./AutoFocusUtils":74,"./CSSPropertyOperations":77,"./DOMLazyTree":81,"./DOMNamespaces":82,"./DOMProperty":83,"./DOMPropertyOperations":84,"./EventConstants":89,"./EventPluginHub":90,"./EventPluginRegistry":91,"./ReactBrowserEventEmitter":100,"./ReactComponentBrowserEnvironment":105,"./ReactDOMButton":111,"./ReactDOMComponentFlags":113,"./ReactDOMComponentTree":114,"./ReactDOMInput":121,"./ReactDOMOption":124,"./ReactDOMSelect":125,"./ReactDOMTextarea":128,"./ReactInstrumentation":146,"./ReactMultiChild":150,"./ReactServerRenderingTransaction":161,"./escapeTextContentForBrowser":190,"./isEventSupported":204,"./reactProdInvariant":208,"./validateDOMNesting":214,"_process":284,"fbjs/lib/emptyFunction":25,"fbjs/lib/invariant":33,"fbjs/lib/keyOf":37,"fbjs/lib/shallowEqual":42,"fbjs/lib/warning":43,"object-assign":72}],113:[function(require,module,exports){
+},{"./AutoFocusUtils":79,"./CSSPropertyOperations":82,"./DOMLazyTree":86,"./DOMNamespaces":87,"./DOMProperty":88,"./DOMPropertyOperations":89,"./EventConstants":94,"./EventPluginHub":95,"./EventPluginRegistry":96,"./ReactBrowserEventEmitter":105,"./ReactComponentBrowserEnvironment":110,"./ReactDOMButton":116,"./ReactDOMComponentFlags":118,"./ReactDOMComponentTree":119,"./ReactDOMInput":126,"./ReactDOMOption":129,"./ReactDOMSelect":130,"./ReactDOMTextarea":133,"./ReactInstrumentation":151,"./ReactMultiChild":155,"./ReactServerRenderingTransaction":166,"./escapeTextContentForBrowser":195,"./isEventSupported":209,"./reactProdInvariant":213,"./validateDOMNesting":219,"_process":288,"fbjs/lib/emptyFunction":29,"fbjs/lib/invariant":37,"fbjs/lib/keyOf":41,"fbjs/lib/shallowEqual":46,"fbjs/lib/warning":47,"object-assign":77}],118:[function(require,module,exports){
 /**
  * Copyright 2015-present, Facebook, Inc.
  * All rights reserved.
@@ -15852,7 +18486,7 @@ var ReactDOMComponentFlags = {
 };
 
 module.exports = ReactDOMComponentFlags;
-},{}],114:[function(require,module,exports){
+},{}],119:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16043,7 +18677,7 @@ var ReactDOMComponentTree = {
 
 module.exports = ReactDOMComponentTree;
 }).call(this,require('_process'))
-},{"./DOMProperty":83,"./ReactDOMComponentFlags":113,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],115:[function(require,module,exports){
+},{"./DOMProperty":88,"./ReactDOMComponentFlags":118,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],120:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16079,7 +18713,7 @@ function ReactDOMContainerInfo(topLevelWrapper, node) {
 
 module.exports = ReactDOMContainerInfo;
 }).call(this,require('_process'))
-},{"./validateDOMNesting":214,"_process":284}],116:[function(require,module,exports){
+},{"./validateDOMNesting":219,"_process":288}],121:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16149,7 +18783,7 @@ ReactDOMDebugTool.addDevtool(ReactDOMNullInputValuePropDevtool);
 
 module.exports = ReactDOMDebugTool;
 }).call(this,require('_process'))
-},{"./ReactDOMNullInputValuePropDevtool":123,"./ReactDOMUnknownPropertyDevtool":130,"./ReactDebugTool":131,"_process":284,"fbjs/lib/warning":43}],117:[function(require,module,exports){
+},{"./ReactDOMNullInputValuePropDevtool":128,"./ReactDOMUnknownPropertyDevtool":135,"./ReactDebugTool":136,"_process":288,"fbjs/lib/warning":47}],122:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -16210,7 +18844,7 @@ _assign(ReactDOMEmptyComponent.prototype, {
 });
 
 module.exports = ReactDOMEmptyComponent;
-},{"./DOMLazyTree":81,"./ReactDOMComponentTree":114,"object-assign":72}],118:[function(require,module,exports){
+},{"./DOMLazyTree":86,"./ReactDOMComponentTree":119,"object-assign":77}],123:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16389,7 +19023,7 @@ var ReactDOMFactories = mapObject({
 
 module.exports = ReactDOMFactories;
 }).call(this,require('_process'))
-},{"./ReactElement":134,"./ReactElementValidator":135,"_process":284,"fbjs/lib/mapObject":38}],119:[function(require,module,exports){
+},{"./ReactElement":139,"./ReactElementValidator":140,"_process":288,"fbjs/lib/mapObject":42}],124:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -16408,7 +19042,7 @@ var ReactDOMFeatureFlags = {
 };
 
 module.exports = ReactDOMFeatureFlags;
-},{}],120:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -16443,7 +19077,7 @@ var ReactDOMIDOperations = {
 };
 
 module.exports = ReactDOMIDOperations;
-},{"./DOMChildrenOperations":80,"./ReactDOMComponentTree":114}],121:[function(require,module,exports){
+},{"./DOMChildrenOperations":85,"./ReactDOMComponentTree":119}],126:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16690,7 +19324,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMInput;
 }).call(this,require('_process'))
-},{"./DOMPropertyOperations":84,"./DisabledInputUtils":87,"./LinkedValueUtils":97,"./ReactDOMComponentTree":114,"./ReactUpdates":164,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43,"object-assign":72}],122:[function(require,module,exports){
+},{"./DOMPropertyOperations":89,"./DisabledInputUtils":92,"./LinkedValueUtils":102,"./ReactDOMComponentTree":119,"./ReactUpdates":169,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47,"object-assign":77}],127:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16714,7 +19348,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = { debugTool: debugTool };
 }).call(this,require('_process'))
-},{"./ReactDOMDebugTool":116,"_process":284}],123:[function(require,module,exports){
+},{"./ReactDOMDebugTool":121,"_process":288}],128:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16760,7 +19394,7 @@ var ReactDOMUnknownPropertyDevtool = {
 
 module.exports = ReactDOMUnknownPropertyDevtool;
 }).call(this,require('_process'))
-},{"./ReactComponentTreeDevtool":107,"_process":284,"fbjs/lib/warning":43}],124:[function(require,module,exports){
+},{"./ReactComponentTreeDevtool":112,"_process":288,"fbjs/lib/warning":47}],129:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -16886,7 +19520,7 @@ var ReactDOMOption = {
 
 module.exports = ReactDOMOption;
 }).call(this,require('_process'))
-},{"./ReactChildren":102,"./ReactDOMComponentTree":114,"./ReactDOMSelect":125,"_process":284,"fbjs/lib/warning":43,"object-assign":72}],125:[function(require,module,exports){
+},{"./ReactChildren":107,"./ReactDOMComponentTree":119,"./ReactDOMSelect":130,"_process":288,"fbjs/lib/warning":47,"object-assign":77}],130:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -17089,7 +19723,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMSelect;
 }).call(this,require('_process'))
-},{"./DisabledInputUtils":87,"./LinkedValueUtils":97,"./ReactDOMComponentTree":114,"./ReactUpdates":164,"_process":284,"fbjs/lib/warning":43,"object-assign":72}],126:[function(require,module,exports){
+},{"./DisabledInputUtils":92,"./LinkedValueUtils":102,"./ReactDOMComponentTree":119,"./ReactUpdates":169,"_process":288,"fbjs/lib/warning":47,"object-assign":77}],131:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -17302,7 +19936,7 @@ var ReactDOMSelection = {
 };
 
 module.exports = ReactDOMSelection;
-},{"./getNodeForCharacterOffset":200,"./getTextContentAccessor":201,"fbjs/lib/ExecutionEnvironment":19}],127:[function(require,module,exports){
+},{"./getNodeForCharacterOffset":205,"./getTextContentAccessor":206,"fbjs/lib/ExecutionEnvironment":23}],132:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -17476,7 +20110,7 @@ _assign(ReactDOMTextComponent.prototype, {
 
 module.exports = ReactDOMTextComponent;
 }).call(this,require('_process'))
-},{"./DOMChildrenOperations":80,"./DOMLazyTree":81,"./ReactDOMComponentTree":114,"./ReactInstrumentation":146,"./escapeTextContentForBrowser":190,"./reactProdInvariant":208,"./validateDOMNesting":214,"_process":284,"fbjs/lib/invariant":33,"object-assign":72}],128:[function(require,module,exports){
+},{"./DOMChildrenOperations":85,"./DOMLazyTree":86,"./ReactDOMComponentTree":119,"./ReactInstrumentation":151,"./escapeTextContentForBrowser":195,"./reactProdInvariant":213,"./validateDOMNesting":219,"_process":288,"fbjs/lib/invariant":37,"object-assign":77}],133:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -17634,7 +20268,7 @@ function _handleChange(event) {
 
 module.exports = ReactDOMTextarea;
 }).call(this,require('_process'))
-},{"./DisabledInputUtils":87,"./LinkedValueUtils":97,"./ReactDOMComponentTree":114,"./ReactUpdates":164,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43,"object-assign":72}],129:[function(require,module,exports){
+},{"./DisabledInputUtils":92,"./LinkedValueUtils":102,"./ReactDOMComponentTree":119,"./ReactUpdates":169,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47,"object-assign":77}],134:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -17773,7 +20407,7 @@ module.exports = {
   traverseEnterLeave: traverseEnterLeave
 };
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],130:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],135:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -17888,7 +20522,7 @@ var ReactDOMUnknownPropertyDevtool = {
 
 module.exports = ReactDOMUnknownPropertyDevtool;
 }).call(this,require('_process'))
-},{"./DOMProperty":83,"./EventPluginRegistry":91,"./ReactComponentTreeDevtool":107,"_process":284,"fbjs/lib/warning":43}],131:[function(require,module,exports){
+},{"./DOMProperty":88,"./EventPluginRegistry":96,"./ReactComponentTreeDevtool":112,"_process":288,"fbjs/lib/warning":47}],136:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -18194,7 +20828,7 @@ if (/[?&]react_perf\b/.test(url)) {
 
 module.exports = ReactDebugTool;
 }).call(this,require('_process'))
-},{"./ReactComponentTreeDevtool":107,"./ReactHostOperationHistoryDevtool":142,"./ReactInvalidSetStateWarningDevTool":147,"_process":284,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/performanceNow":41,"fbjs/lib/warning":43}],132:[function(require,module,exports){
+},{"./ReactComponentTreeDevtool":112,"./ReactHostOperationHistoryDevtool":147,"./ReactInvalidSetStateWarningDevTool":152,"_process":288,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/performanceNow":45,"fbjs/lib/warning":47}],137:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -18263,7 +20897,7 @@ var ReactDefaultBatchingStrategy = {
 };
 
 module.exports = ReactDefaultBatchingStrategy;
-},{"./ReactUpdates":164,"./Transaction":182,"fbjs/lib/emptyFunction":25,"object-assign":72}],133:[function(require,module,exports){
+},{"./ReactUpdates":169,"./Transaction":187,"fbjs/lib/emptyFunction":29,"object-assign":77}],138:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -18348,7 +20982,7 @@ function inject() {
 module.exports = {
   inject: inject
 };
-},{"./BeforeInputEventPlugin":75,"./ChangeEventPlugin":79,"./DefaultEventPluginOrder":86,"./EnterLeaveEventPlugin":88,"./HTMLDOMPropertyConfig":95,"./ReactComponentBrowserEnvironment":105,"./ReactDOMComponent":112,"./ReactDOMComponentTree":114,"./ReactDOMEmptyComponent":117,"./ReactDOMTextComponent":127,"./ReactDOMTreeTraversal":129,"./ReactDefaultBatchingStrategy":132,"./ReactEventListener":139,"./ReactInjection":143,"./ReactReconcileTransaction":158,"./SVGDOMPropertyConfig":166,"./SelectEventPlugin":167,"./SimpleEventPlugin":168}],134:[function(require,module,exports){
+},{"./BeforeInputEventPlugin":80,"./ChangeEventPlugin":84,"./DefaultEventPluginOrder":91,"./EnterLeaveEventPlugin":93,"./HTMLDOMPropertyConfig":100,"./ReactComponentBrowserEnvironment":110,"./ReactDOMComponent":117,"./ReactDOMComponentTree":119,"./ReactDOMEmptyComponent":122,"./ReactDOMTextComponent":132,"./ReactDOMTreeTraversal":134,"./ReactDefaultBatchingStrategy":137,"./ReactEventListener":144,"./ReactInjection":148,"./ReactReconcileTransaction":163,"./SVGDOMPropertyConfig":171,"./SelectEventPlugin":172,"./SimpleEventPlugin":173}],139:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -18703,7 +21337,7 @@ ReactElement.REACT_ELEMENT_TYPE = REACT_ELEMENT_TYPE;
 
 module.exports = ReactElement;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":109,"./canDefineProperty":186,"_process":284,"fbjs/lib/warning":43,"object-assign":72}],135:[function(require,module,exports){
+},{"./ReactCurrentOwner":114,"./canDefineProperty":191,"_process":288,"fbjs/lib/warning":47,"object-assign":77}],140:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -18932,7 +21566,7 @@ var ReactElementValidator = {
 
 module.exports = ReactElementValidator;
 }).call(this,require('_process'))
-},{"./ReactComponentTreeDevtool":107,"./ReactCurrentOwner":109,"./ReactElement":134,"./ReactPropTypeLocations":156,"./canDefineProperty":186,"./checkReactTypeSpec":187,"./getIteratorFn":199,"_process":284,"fbjs/lib/warning":43}],136:[function(require,module,exports){
+},{"./ReactComponentTreeDevtool":112,"./ReactCurrentOwner":114,"./ReactElement":139,"./ReactPropTypeLocations":161,"./canDefineProperty":191,"./checkReactTypeSpec":192,"./getIteratorFn":204,"_process":288,"fbjs/lib/warning":47}],141:[function(require,module,exports){
 /**
  * Copyright 2014-present, Facebook, Inc.
  * All rights reserved.
@@ -18963,7 +21597,7 @@ var ReactEmptyComponent = {
 ReactEmptyComponent.injection = ReactEmptyComponentInjection;
 
 module.exports = ReactEmptyComponent;
-},{}],137:[function(require,module,exports){
+},{}],142:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -19042,7 +21676,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactErrorUtils;
 }).call(this,require('_process'))
-},{"_process":284}],138:[function(require,module,exports){
+},{"_process":288}],143:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19076,7 +21710,7 @@ var ReactEventEmitterMixin = {
 };
 
 module.exports = ReactEventEmitterMixin;
-},{"./EventPluginHub":90}],139:[function(require,module,exports){
+},{"./EventPluginHub":95}],144:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19234,7 +21868,7 @@ var ReactEventListener = {
 };
 
 module.exports = ReactEventListener;
-},{"./PooledClass":98,"./ReactDOMComponentTree":114,"./ReactUpdates":164,"./getEventTarget":197,"fbjs/lib/EventListener":18,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/getUnboundedScrollPosition":30,"object-assign":72}],140:[function(require,module,exports){
+},{"./PooledClass":103,"./ReactDOMComponentTree":119,"./ReactUpdates":169,"./getEventTarget":202,"fbjs/lib/EventListener":22,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/getUnboundedScrollPosition":34,"object-assign":77}],145:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19257,7 +21891,7 @@ var ReactFeatureFlags = {
 };
 
 module.exports = ReactFeatureFlags;
-},{}],141:[function(require,module,exports){
+},{}],146:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -19336,7 +21970,7 @@ var ReactHostComponent = {
 
 module.exports = ReactHostComponent;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"object-assign":72}],142:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"object-assign":77}],147:[function(require,module,exports){
 /**
  * Copyright 2016-present, Facebook, Inc.
  * All rights reserved.
@@ -19374,7 +22008,7 @@ var ReactHostOperationHistoryDevtool = {
 };
 
 module.exports = ReactHostOperationHistoryDevtool;
-},{}],143:[function(require,module,exports){
+},{}],148:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19411,7 +22045,7 @@ var ReactInjection = {
 };
 
 module.exports = ReactInjection;
-},{"./DOMProperty":83,"./EventPluginHub":90,"./EventPluginUtils":92,"./ReactBrowserEventEmitter":100,"./ReactClass":103,"./ReactComponentEnvironment":106,"./ReactEmptyComponent":136,"./ReactHostComponent":141,"./ReactUpdates":164}],144:[function(require,module,exports){
+},{"./DOMProperty":88,"./EventPluginHub":95,"./EventPluginUtils":97,"./ReactBrowserEventEmitter":105,"./ReactClass":108,"./ReactComponentEnvironment":111,"./ReactEmptyComponent":141,"./ReactHostComponent":146,"./ReactUpdates":169}],149:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19536,7 +22170,7 @@ var ReactInputSelection = {
 };
 
 module.exports = ReactInputSelection;
-},{"./ReactDOMSelection":126,"fbjs/lib/containsNode":22,"fbjs/lib/focusNode":27,"fbjs/lib/getActiveElement":28}],145:[function(require,module,exports){
+},{"./ReactDOMSelection":131,"fbjs/lib/containsNode":26,"fbjs/lib/focusNode":31,"fbjs/lib/getActiveElement":32}],150:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19585,7 +22219,7 @@ var ReactInstanceMap = {
 };
 
 module.exports = ReactInstanceMap;
-},{}],146:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -19609,7 +22243,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = { debugTool: debugTool };
 }).call(this,require('_process'))
-},{"./ReactDebugTool":131,"_process":284}],147:[function(require,module,exports){
+},{"./ReactDebugTool":136,"_process":288}],152:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2016-present, Facebook, Inc.
@@ -19648,7 +22282,7 @@ var ReactInvalidSetStateWarningDevTool = {
 
 module.exports = ReactInvalidSetStateWarningDevTool;
 }).call(this,require('_process'))
-},{"_process":284,"fbjs/lib/warning":43}],148:[function(require,module,exports){
+},{"_process":288,"fbjs/lib/warning":47}],153:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -19699,7 +22333,7 @@ var ReactMarkupChecksum = {
 };
 
 module.exports = ReactMarkupChecksum;
-},{"./adler32":185}],149:[function(require,module,exports){
+},{"./adler32":190}],154:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20201,7 +22835,7 @@ var ReactMount = {
 
 module.exports = ReactMount;
 }).call(this,require('_process'))
-},{"./DOMLazyTree":81,"./DOMProperty":83,"./ReactBrowserEventEmitter":100,"./ReactCurrentOwner":109,"./ReactDOMComponentTree":114,"./ReactDOMContainerInfo":115,"./ReactDOMFeatureFlags":119,"./ReactElement":134,"./ReactFeatureFlags":140,"./ReactInstanceMap":145,"./ReactInstrumentation":146,"./ReactMarkupChecksum":148,"./ReactReconciler":159,"./ReactUpdateQueue":163,"./ReactUpdates":164,"./instantiateReactComponent":203,"./reactProdInvariant":208,"./setInnerHTML":210,"./shouldUpdateReactComponent":212,"_process":284,"fbjs/lib/emptyObject":26,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],150:[function(require,module,exports){
+},{"./DOMLazyTree":86,"./DOMProperty":88,"./ReactBrowserEventEmitter":105,"./ReactCurrentOwner":114,"./ReactDOMComponentTree":119,"./ReactDOMContainerInfo":120,"./ReactDOMFeatureFlags":124,"./ReactElement":139,"./ReactFeatureFlags":145,"./ReactInstanceMap":150,"./ReactInstrumentation":151,"./ReactMarkupChecksum":153,"./ReactReconciler":164,"./ReactUpdateQueue":168,"./ReactUpdates":169,"./instantiateReactComponent":208,"./reactProdInvariant":213,"./setInnerHTML":215,"./shouldUpdateReactComponent":217,"_process":288,"fbjs/lib/emptyObject":30,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],155:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20654,7 +23288,7 @@ var ReactMultiChild = {
 
 module.exports = ReactMultiChild;
 }).call(this,require('_process'))
-},{"./ReactChildReconciler":101,"./ReactComponentEnvironment":106,"./ReactCurrentOwner":109,"./ReactInstanceMap":145,"./ReactInstrumentation":146,"./ReactMultiChildUpdateTypes":151,"./ReactReconciler":159,"./flattenChildren":192,"./reactProdInvariant":208,"_process":284,"fbjs/lib/emptyFunction":25,"fbjs/lib/invariant":33}],151:[function(require,module,exports){
+},{"./ReactChildReconciler":106,"./ReactComponentEnvironment":111,"./ReactCurrentOwner":114,"./ReactInstanceMap":150,"./ReactInstrumentation":151,"./ReactMultiChildUpdateTypes":156,"./ReactReconciler":164,"./flattenChildren":197,"./reactProdInvariant":213,"_process":288,"fbjs/lib/emptyFunction":29,"fbjs/lib/invariant":37}],156:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -20687,7 +23321,7 @@ var ReactMultiChildUpdateTypes = keyMirror({
 });
 
 module.exports = ReactMultiChildUpdateTypes;
-},{"fbjs/lib/keyMirror":36}],152:[function(require,module,exports){
+},{"fbjs/lib/keyMirror":40}],157:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20730,7 +23364,7 @@ var ReactNodeTypes = {
 
 module.exports = ReactNodeTypes;
 }).call(this,require('_process'))
-},{"./ReactElement":134,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],153:[function(require,module,exports){
+},{"./ReactElement":139,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],158:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -20829,7 +23463,7 @@ var ReactNoopUpdateQueue = {
 
 module.exports = ReactNoopUpdateQueue;
 }).call(this,require('_process'))
-},{"_process":284,"fbjs/lib/warning":43}],154:[function(require,module,exports){
+},{"_process":288,"fbjs/lib/warning":47}],159:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20926,7 +23560,7 @@ var ReactOwner = {
 
 module.exports = ReactOwner;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],155:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],160:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -20953,7 +23587,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = ReactPropTypeLocationNames;
 }).call(this,require('_process'))
-},{"_process":284}],156:[function(require,module,exports){
+},{"_process":288}],161:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -20976,7 +23610,7 @@ var ReactPropTypeLocations = keyMirror({
 });
 
 module.exports = ReactPropTypeLocations;
-},{"fbjs/lib/keyMirror":36}],157:[function(require,module,exports){
+},{"fbjs/lib/keyMirror":40}],162:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -21380,7 +24014,7 @@ function getClassName(propValue) {
 }
 
 module.exports = ReactPropTypes;
-},{"./ReactElement":134,"./ReactPropTypeLocationNames":155,"./getIteratorFn":199,"fbjs/lib/emptyFunction":25}],158:[function(require,module,exports){
+},{"./ReactElement":139,"./ReactPropTypeLocationNames":160,"./getIteratorFn":204,"fbjs/lib/emptyFunction":29}],163:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -21561,7 +24195,7 @@ PooledClass.addPoolingTo(ReactReconcileTransaction);
 
 module.exports = ReactReconcileTransaction;
 }).call(this,require('_process'))
-},{"./CallbackQueue":78,"./PooledClass":98,"./ReactBrowserEventEmitter":100,"./ReactInputSelection":144,"./ReactInstrumentation":146,"./ReactUpdateQueue":163,"./Transaction":182,"_process":284,"object-assign":72}],159:[function(require,module,exports){
+},{"./CallbackQueue":83,"./PooledClass":103,"./ReactBrowserEventEmitter":105,"./ReactInputSelection":149,"./ReactInstrumentation":151,"./ReactUpdateQueue":168,"./Transaction":187,"_process":288,"object-assign":77}],164:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -21740,7 +24374,7 @@ var ReactReconciler = {
 
 module.exports = ReactReconciler;
 }).call(this,require('_process'))
-},{"./ReactInstrumentation":146,"./ReactRef":160,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],160:[function(require,module,exports){
+},{"./ReactInstrumentation":151,"./ReactRef":165,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],165:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -21819,7 +24453,7 @@ ReactRef.detachRefs = function (instance, element) {
 };
 
 module.exports = ReactRef;
-},{"./ReactOwner":154}],161:[function(require,module,exports){
+},{"./ReactOwner":159}],166:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -21912,7 +24546,7 @@ PooledClass.addPoolingTo(ReactServerRenderingTransaction);
 
 module.exports = ReactServerRenderingTransaction;
 }).call(this,require('_process'))
-},{"./PooledClass":98,"./ReactInstrumentation":146,"./ReactServerUpdateQueue":162,"./Transaction":182,"_process":284,"object-assign":72}],162:[function(require,module,exports){
+},{"./PooledClass":103,"./ReactInstrumentation":151,"./ReactServerUpdateQueue":167,"./Transaction":187,"_process":288,"object-assign":77}],167:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -22056,7 +24690,7 @@ var ReactServerUpdateQueue = function () {
 
 module.exports = ReactServerUpdateQueue;
 }).call(this,require('_process'))
-},{"./ReactUpdateQueue":163,"./Transaction":182,"_process":284,"fbjs/lib/warning":43}],163:[function(require,module,exports){
+},{"./ReactUpdateQueue":168,"./Transaction":187,"_process":288,"fbjs/lib/warning":47}],168:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -22284,7 +24918,7 @@ var ReactUpdateQueue = {
 
 module.exports = ReactUpdateQueue;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":109,"./ReactInstanceMap":145,"./ReactInstrumentation":146,"./ReactUpdates":164,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],164:[function(require,module,exports){
+},{"./ReactCurrentOwner":114,"./ReactInstanceMap":150,"./ReactInstrumentation":151,"./ReactUpdates":169,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],169:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -22538,7 +25172,7 @@ var ReactUpdates = {
 
 module.exports = ReactUpdates;
 }).call(this,require('_process'))
-},{"./CallbackQueue":78,"./PooledClass":98,"./ReactFeatureFlags":140,"./ReactReconciler":159,"./Transaction":182,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"object-assign":72}],165:[function(require,module,exports){
+},{"./CallbackQueue":83,"./PooledClass":103,"./ReactFeatureFlags":145,"./ReactReconciler":164,"./Transaction":187,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"object-assign":77}],170:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -22553,7 +25187,7 @@ module.exports = ReactUpdates;
 'use strict';
 
 module.exports = '15.2.1';
-},{}],166:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -22854,7 +25488,7 @@ Object.keys(ATTRS).forEach(function (key) {
 });
 
 module.exports = SVGDOMPropertyConfig;
-},{}],167:[function(require,module,exports){
+},{}],172:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23051,7 +25685,7 @@ var SelectEventPlugin = {
 };
 
 module.exports = SelectEventPlugin;
-},{"./EventConstants":89,"./EventPropagators":93,"./ReactDOMComponentTree":114,"./ReactInputSelection":144,"./SyntheticEvent":173,"./isTextInputElement":205,"fbjs/lib/ExecutionEnvironment":19,"fbjs/lib/getActiveElement":28,"fbjs/lib/keyOf":37,"fbjs/lib/shallowEqual":42}],168:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPropagators":98,"./ReactDOMComponentTree":119,"./ReactInputSelection":149,"./SyntheticEvent":178,"./isTextInputElement":210,"fbjs/lib/ExecutionEnvironment":23,"fbjs/lib/getActiveElement":32,"fbjs/lib/keyOf":41,"fbjs/lib/shallowEqual":46}],173:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -23683,7 +26317,7 @@ var SimpleEventPlugin = {
 
 module.exports = SimpleEventPlugin;
 }).call(this,require('_process'))
-},{"./EventConstants":89,"./EventPropagators":93,"./ReactDOMComponentTree":114,"./SyntheticAnimationEvent":169,"./SyntheticClipboardEvent":170,"./SyntheticDragEvent":172,"./SyntheticEvent":173,"./SyntheticFocusEvent":174,"./SyntheticKeyboardEvent":176,"./SyntheticMouseEvent":177,"./SyntheticTouchEvent":178,"./SyntheticTransitionEvent":179,"./SyntheticUIEvent":180,"./SyntheticWheelEvent":181,"./getEventCharCode":194,"./reactProdInvariant":208,"_process":284,"fbjs/lib/EventListener":18,"fbjs/lib/emptyFunction":25,"fbjs/lib/invariant":33,"fbjs/lib/keyOf":37}],169:[function(require,module,exports){
+},{"./EventConstants":94,"./EventPropagators":98,"./ReactDOMComponentTree":119,"./SyntheticAnimationEvent":174,"./SyntheticClipboardEvent":175,"./SyntheticDragEvent":177,"./SyntheticEvent":178,"./SyntheticFocusEvent":179,"./SyntheticKeyboardEvent":181,"./SyntheticMouseEvent":182,"./SyntheticTouchEvent":183,"./SyntheticTransitionEvent":184,"./SyntheticUIEvent":185,"./SyntheticWheelEvent":186,"./getEventCharCode":199,"./reactProdInvariant":213,"_process":288,"fbjs/lib/EventListener":22,"fbjs/lib/emptyFunction":29,"fbjs/lib/invariant":37,"fbjs/lib/keyOf":41}],174:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23723,7 +26357,7 @@ function SyntheticAnimationEvent(dispatchConfig, dispatchMarker, nativeEvent, na
 SyntheticEvent.augmentClass(SyntheticAnimationEvent, AnimationEventInterface);
 
 module.exports = SyntheticAnimationEvent;
-},{"./SyntheticEvent":173}],170:[function(require,module,exports){
+},{"./SyntheticEvent":178}],175:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23762,7 +26396,7 @@ function SyntheticClipboardEvent(dispatchConfig, dispatchMarker, nativeEvent, na
 SyntheticEvent.augmentClass(SyntheticClipboardEvent, ClipboardEventInterface);
 
 module.exports = SyntheticClipboardEvent;
-},{"./SyntheticEvent":173}],171:[function(require,module,exports){
+},{"./SyntheticEvent":178}],176:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23799,7 +26433,7 @@ function SyntheticCompositionEvent(dispatchConfig, dispatchMarker, nativeEvent, 
 SyntheticEvent.augmentClass(SyntheticCompositionEvent, CompositionEventInterface);
 
 module.exports = SyntheticCompositionEvent;
-},{"./SyntheticEvent":173}],172:[function(require,module,exports){
+},{"./SyntheticEvent":178}],177:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -23836,7 +26470,7 @@ function SyntheticDragEvent(dispatchConfig, dispatchMarker, nativeEvent, nativeE
 SyntheticMouseEvent.augmentClass(SyntheticDragEvent, DragEventInterface);
 
 module.exports = SyntheticDragEvent;
-},{"./SyntheticMouseEvent":177}],173:[function(require,module,exports){
+},{"./SyntheticMouseEvent":182}],178:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -24099,7 +26733,7 @@ function getPooledWarningPropertyDefinition(propName, getVal) {
   }
 }
 }).call(this,require('_process'))
-},{"./PooledClass":98,"_process":284,"fbjs/lib/emptyFunction":25,"fbjs/lib/warning":43,"object-assign":72}],174:[function(require,module,exports){
+},{"./PooledClass":103,"_process":288,"fbjs/lib/emptyFunction":29,"fbjs/lib/warning":47,"object-assign":77}],179:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24136,7 +26770,7 @@ function SyntheticFocusEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticUIEvent.augmentClass(SyntheticFocusEvent, FocusEventInterface);
 
 module.exports = SyntheticFocusEvent;
-},{"./SyntheticUIEvent":180}],175:[function(require,module,exports){
+},{"./SyntheticUIEvent":185}],180:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24174,7 +26808,7 @@ function SyntheticInputEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticEvent.augmentClass(SyntheticInputEvent, InputEventInterface);
 
 module.exports = SyntheticInputEvent;
-},{"./SyntheticEvent":173}],176:[function(require,module,exports){
+},{"./SyntheticEvent":178}],181:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24259,7 +26893,7 @@ function SyntheticKeyboardEvent(dispatchConfig, dispatchMarker, nativeEvent, nat
 SyntheticUIEvent.augmentClass(SyntheticKeyboardEvent, KeyboardEventInterface);
 
 module.exports = SyntheticKeyboardEvent;
-},{"./SyntheticUIEvent":180,"./getEventCharCode":194,"./getEventKey":195,"./getEventModifierState":196}],177:[function(require,module,exports){
+},{"./SyntheticUIEvent":185,"./getEventCharCode":199,"./getEventKey":200,"./getEventModifierState":201}],182:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24332,7 +26966,7 @@ function SyntheticMouseEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticUIEvent.augmentClass(SyntheticMouseEvent, MouseEventInterface);
 
 module.exports = SyntheticMouseEvent;
-},{"./SyntheticUIEvent":180,"./ViewportMetrics":183,"./getEventModifierState":196}],178:[function(require,module,exports){
+},{"./SyntheticUIEvent":185,"./ViewportMetrics":188,"./getEventModifierState":201}],183:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24378,7 +27012,7 @@ function SyntheticTouchEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticUIEvent.augmentClass(SyntheticTouchEvent, TouchEventInterface);
 
 module.exports = SyntheticTouchEvent;
-},{"./SyntheticUIEvent":180,"./getEventModifierState":196}],179:[function(require,module,exports){
+},{"./SyntheticUIEvent":185,"./getEventModifierState":201}],184:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24418,7 +27052,7 @@ function SyntheticTransitionEvent(dispatchConfig, dispatchMarker, nativeEvent, n
 SyntheticEvent.augmentClass(SyntheticTransitionEvent, TransitionEventInterface);
 
 module.exports = SyntheticTransitionEvent;
-},{"./SyntheticEvent":173}],180:[function(require,module,exports){
+},{"./SyntheticEvent":178}],185:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24478,7 +27112,7 @@ function SyntheticUIEvent(dispatchConfig, dispatchMarker, nativeEvent, nativeEve
 SyntheticEvent.augmentClass(SyntheticUIEvent, UIEventInterface);
 
 module.exports = SyntheticUIEvent;
-},{"./SyntheticEvent":173,"./getEventTarget":197}],181:[function(require,module,exports){
+},{"./SyntheticEvent":178,"./getEventTarget":202}],186:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24533,7 +27167,7 @@ function SyntheticWheelEvent(dispatchConfig, dispatchMarker, nativeEvent, native
 SyntheticMouseEvent.augmentClass(SyntheticWheelEvent, WheelEventInterface);
 
 module.exports = SyntheticWheelEvent;
-},{"./SyntheticMouseEvent":177}],182:[function(require,module,exports){
+},{"./SyntheticMouseEvent":182}],187:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -24769,7 +27403,7 @@ var Transaction = {
 
 module.exports = Transaction;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],183:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],188:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24797,7 +27431,7 @@ var ViewportMetrics = {
 };
 
 module.exports = ViewportMetrics;
-},{}],184:[function(require,module,exports){
+},{}],189:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2014-present, Facebook, Inc.
@@ -24858,7 +27492,7 @@ function accumulateInto(current, next) {
 
 module.exports = accumulateInto;
 }).call(this,require('_process'))
-},{"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],185:[function(require,module,exports){
+},{"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],190:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -24903,7 +27537,7 @@ function adler32(data) {
 }
 
 module.exports = adler32;
-},{}],186:[function(require,module,exports){
+},{}],191:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -24930,7 +27564,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = canDefineProperty;
 }).call(this,require('_process'))
-},{"_process":284}],187:[function(require,module,exports){
+},{"_process":288}],192:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -25006,7 +27640,7 @@ function checkReactTypeSpec(typeSpecs, values, location, componentName, element,
 
 module.exports = checkReactTypeSpec;
 }).call(this,require('_process'))
-},{"./ReactComponentTreeDevtool":107,"./ReactPropTypeLocationNames":155,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],188:[function(require,module,exports){
+},{"./ReactComponentTreeDevtool":112,"./ReactPropTypeLocationNames":160,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],193:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25039,7 +27673,7 @@ var createMicrosoftUnsafeLocalFunction = function (func) {
 };
 
 module.exports = createMicrosoftUnsafeLocalFunction;
-},{}],189:[function(require,module,exports){
+},{}],194:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -25121,7 +27755,7 @@ function dangerousStyleValue(name, value, component) {
 
 module.exports = dangerousStyleValue;
 }).call(this,require('_process'))
-},{"./CSSProperty":76,"_process":284,"fbjs/lib/warning":43}],190:[function(require,module,exports){
+},{"./CSSProperty":81,"_process":288,"fbjs/lib/warning":47}],195:[function(require,module,exports){
 /**
  * Copyright 2016-present, Facebook, Inc.
  * All rights reserved.
@@ -25244,7 +27878,7 @@ function escapeTextContentForBrowser(text) {
 }
 
 module.exports = escapeTextContentForBrowser;
-},{}],191:[function(require,module,exports){
+},{}],196:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -25307,7 +27941,7 @@ function findDOMNode(componentOrElement) {
 
 module.exports = findDOMNode;
 }).call(this,require('_process'))
-},{"./ReactCurrentOwner":109,"./ReactDOMComponentTree":114,"./ReactInstanceMap":145,"./getHostComponentFromComposite":198,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],192:[function(require,module,exports){
+},{"./ReactCurrentOwner":114,"./ReactDOMComponentTree":119,"./ReactInstanceMap":150,"./getHostComponentFromComposite":203,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],197:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -25371,7 +28005,7 @@ function flattenChildren(children, selfDebugID) {
 
 module.exports = flattenChildren;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":96,"./ReactComponentTreeDevtool":107,"./traverseAllChildren":213,"_process":284,"fbjs/lib/warning":43}],193:[function(require,module,exports){
+},{"./KeyEscapeUtils":101,"./ReactComponentTreeDevtool":112,"./traverseAllChildren":218,"_process":288,"fbjs/lib/warning":47}],198:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25403,7 +28037,7 @@ function forEachAccumulated(arr, cb, scope) {
 }
 
 module.exports = forEachAccumulated;
-},{}],194:[function(require,module,exports){
+},{}],199:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25454,7 +28088,7 @@ function getEventCharCode(nativeEvent) {
 }
 
 module.exports = getEventCharCode;
-},{}],195:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25557,7 +28191,7 @@ function getEventKey(nativeEvent) {
 }
 
 module.exports = getEventKey;
-},{"./getEventCharCode":194}],196:[function(require,module,exports){
+},{"./getEventCharCode":199}],201:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25601,7 +28235,7 @@ function getEventModifierState(nativeEvent) {
 }
 
 module.exports = getEventModifierState;
-},{}],197:[function(require,module,exports){
+},{}],202:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25637,7 +28271,7 @@ function getEventTarget(nativeEvent) {
 }
 
 module.exports = getEventTarget;
-},{}],198:[function(require,module,exports){
+},{}],203:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25668,7 +28302,7 @@ function getHostComponentFromComposite(inst) {
 }
 
 module.exports = getHostComponentFromComposite;
-},{"./ReactNodeTypes":152}],199:[function(require,module,exports){
+},{"./ReactNodeTypes":157}],204:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25710,7 +28344,7 @@ function getIteratorFn(maybeIterable) {
 }
 
 module.exports = getIteratorFn;
-},{}],200:[function(require,module,exports){
+},{}],205:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25785,7 +28419,7 @@ function getNodeForCharacterOffset(root, offset) {
 }
 
 module.exports = getNodeForCharacterOffset;
-},{}],201:[function(require,module,exports){
+},{}],206:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25819,7 +28453,7 @@ function getTextContentAccessor() {
 }
 
 module.exports = getTextContentAccessor;
-},{"fbjs/lib/ExecutionEnvironment":19}],202:[function(require,module,exports){
+},{"fbjs/lib/ExecutionEnvironment":23}],207:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -25921,7 +28555,7 @@ function getVendorPrefixedEventName(eventName) {
 }
 
 module.exports = getVendorPrefixedEventName;
-},{"fbjs/lib/ExecutionEnvironment":19}],203:[function(require,module,exports){
+},{"fbjs/lib/ExecutionEnvironment":23}],208:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -26070,7 +28704,7 @@ function instantiateReactComponent(node, shouldHaveDebugID) {
 
 module.exports = instantiateReactComponent;
 }).call(this,require('_process'))
-},{"./ReactCompositeComponent":108,"./ReactEmptyComponent":136,"./ReactHostComponent":141,"./ReactInstrumentation":146,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43,"object-assign":72}],204:[function(require,module,exports){
+},{"./ReactCompositeComponent":113,"./ReactEmptyComponent":141,"./ReactHostComponent":146,"./ReactInstrumentation":151,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47,"object-assign":77}],209:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26131,7 +28765,7 @@ function isEventSupported(eventNameSuffix, capture) {
 }
 
 module.exports = isEventSupported;
-},{"fbjs/lib/ExecutionEnvironment":19}],205:[function(require,module,exports){
+},{"fbjs/lib/ExecutionEnvironment":23}],210:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26183,7 +28817,7 @@ function isTextInputElement(elem) {
 }
 
 module.exports = isTextInputElement;
-},{}],206:[function(require,module,exports){
+},{}],211:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -26224,7 +28858,7 @@ function onlyChild(children) {
 
 module.exports = onlyChild;
 }).call(this,require('_process'))
-},{"./ReactElement":134,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33}],207:[function(require,module,exports){
+},{"./ReactElement":139,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37}],212:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26251,7 +28885,7 @@ function quoteAttributeValueForBrowser(value) {
 }
 
 module.exports = quoteAttributeValueForBrowser;
-},{"./escapeTextContentForBrowser":190}],208:[function(require,module,exports){
+},{"./escapeTextContentForBrowser":195}],213:[function(require,module,exports){
 /**
  * Copyright (c) 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26291,7 +28925,7 @@ function reactProdInvariant(code) {
 }
 
 module.exports = reactProdInvariant;
-},{}],209:[function(require,module,exports){
+},{}],214:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26308,7 +28942,7 @@ module.exports = reactProdInvariant;
 var ReactMount = require('./ReactMount');
 
 module.exports = ReactMount.renderSubtreeIntoContainer;
-},{"./ReactMount":149}],210:[function(require,module,exports){
+},{"./ReactMount":154}],215:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26407,7 +29041,7 @@ if (ExecutionEnvironment.canUseDOM) {
 }
 
 module.exports = setInnerHTML;
-},{"./DOMNamespaces":82,"./createMicrosoftUnsafeLocalFunction":188,"fbjs/lib/ExecutionEnvironment":19}],211:[function(require,module,exports){
+},{"./DOMNamespaces":87,"./createMicrosoftUnsafeLocalFunction":193,"fbjs/lib/ExecutionEnvironment":23}],216:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26456,7 +29090,7 @@ if (ExecutionEnvironment.canUseDOM) {
 }
 
 module.exports = setTextContent;
-},{"./escapeTextContentForBrowser":190,"./setInnerHTML":210,"fbjs/lib/ExecutionEnvironment":19}],212:[function(require,module,exports){
+},{"./escapeTextContentForBrowser":195,"./setInnerHTML":215,"fbjs/lib/ExecutionEnvironment":23}],217:[function(require,module,exports){
 /**
  * Copyright 2013-present, Facebook, Inc.
  * All rights reserved.
@@ -26499,7 +29133,7 @@ function shouldUpdateReactComponent(prevElement, nextElement) {
 }
 
 module.exports = shouldUpdateReactComponent;
-},{}],213:[function(require,module,exports){
+},{}],218:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2013-present, Facebook, Inc.
@@ -26662,7 +29296,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 
 module.exports = traverseAllChildren;
 }).call(this,require('_process'))
-},{"./KeyEscapeUtils":96,"./ReactCurrentOwner":109,"./ReactElement":134,"./getIteratorFn":199,"./reactProdInvariant":208,"_process":284,"fbjs/lib/invariant":33,"fbjs/lib/warning":43}],214:[function(require,module,exports){
+},{"./KeyEscapeUtils":101,"./ReactCurrentOwner":114,"./ReactElement":139,"./getIteratorFn":204,"./reactProdInvariant":213,"_process":288,"fbjs/lib/invariant":37,"fbjs/lib/warning":47}],219:[function(require,module,exports){
 (function (process){
 /**
  * Copyright 2015-present, Facebook, Inc.
@@ -27034,903 +29668,12 @@ if (process.env.NODE_ENV !== 'production') {
 
 module.exports = validateDOMNesting;
 }).call(this,require('_process'))
-},{"_process":284,"fbjs/lib/emptyFunction":25,"fbjs/lib/warning":43,"object-assign":72}],215:[function(require,module,exports){
+},{"_process":288,"fbjs/lib/emptyFunction":29,"fbjs/lib/warning":47,"object-assign":77}],220:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./lib/React');
 
-},{"./lib/React":99}],216:[function(require,module,exports){
-var util = require('util');
-var SJJ = require('sdp-jingle-json');
-var WildEmitter = require('wildemitter');
-var Peerconn = require('traceablepeerconnection');
-var adapter = require('webrtc-adapter');
-
-function PeerConnection(config, constraints) {
-    var self = this;
-    var item;
-    WildEmitter.call(this);
-
-    config = config || {};
-    config.iceServers = config.iceServers || [];
-
-    var detectedBrowser = adapter.browserDetails.browser;
-
-    // make sure this only gets enabled in Google Chrome
-    // EXPERIMENTAL FLAG, might get removed without notice
-    this.enableChromeNativeSimulcast = false;
-    if (constraints && constraints.optional &&
-            detectedBrowser === 'chrome' &&
-            navigator.appVersion.match(/Chromium\//) === null) {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.enableChromeNativeSimulcast) {
-                self.enableChromeNativeSimulcast = true;
-            }
-        });
-    }
-
-    // EXPERIMENTAL FLAG, might get removed without notice
-    this.enableMultiStreamHacks = false;
-    if (constraints && constraints.optional &&
-            detectedBrowser === 'chrome') {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.enableMultiStreamHacks) {
-                self.enableMultiStreamHacks = true;
-            }
-        });
-    }
-    // EXPERIMENTAL FLAG, might get removed without notice
-    this.restrictBandwidth = 0;
-    if (constraints && constraints.optional) {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.andyetRestrictBandwidth) {
-                self.restrictBandwidth = constraint.andyetRestrictBandwidth;
-            }
-        });
-    }
-
-    // EXPERIMENTAL FLAG, might get removed without notice
-    // bundle up ice candidates, only works for jingle mode
-    // number > 0 is the delay to wait for additional candidates
-    // ~20ms seems good
-    this.batchIceCandidates = 0;
-    if (constraints && constraints.optional) {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.andyetBatchIce) {
-                self.batchIceCandidates = constraint.andyetBatchIce;
-            }
-        });
-    }
-    this.batchedIceCandidates = [];
-
-    // EXPERIMENTAL FLAG, might get removed without notice
-    // this attemps to strip out candidates with an already known foundation
-    // and type -- i.e. those which are gathered via the same TURN server
-    // but different transports (TURN udp, tcp and tls respectively)
-    if (constraints && constraints.optional && detectedBrowser === 'chrome') {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.andyetFasterICE) {
-                self.eliminateDuplicateCandidates = constraint.andyetFasterICE;
-            }
-        });
-    }
-    // EXPERIMENTAL FLAG, might get removed without notice
-    // when using a server such as the jitsi videobridge we don't need to signal
-    // our candidates
-    if (constraints && constraints.optional) {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.andyetDontSignalCandidates) {
-                self.dontSignalCandidates = constraint.andyetDontSignalCandidates;
-            }
-        });
-    }
-
-
-    // EXPERIMENTAL FLAG, might get removed without notice
-    this.assumeSetLocalSuccess = false;
-    if (constraints && constraints.optional) {
-        constraints.optional.forEach(function (constraint) {
-            if (constraint.andyetAssumeSetLocalSuccess) {
-                self.assumeSetLocalSuccess = constraint.andyetAssumeSetLocalSuccess;
-            }
-        });
-    }
-
-    // EXPERIMENTAL FLAG, might get removed without notice
-    // working around https://bugzilla.mozilla.org/show_bug.cgi?id=1087551
-    // pass in a timeout for this
-    if (detectedBrowser === 'firefox') {
-        if (constraints && constraints.optional) {
-            this.wtFirefox = 0;
-            constraints.optional.forEach(function (constraint) {
-                if (constraint.andyetFirefoxMakesMeSad) {
-                    self.wtFirefox = constraint.andyetFirefoxMakesMeSad;
-                    if (self.wtFirefox > 0) {
-                        self.firefoxcandidatebuffer = [];
-                    }
-                }
-            });
-        }
-    }
-
-
-    this.pc = new Peerconn(config, constraints);
-
-    this.getLocalStreams = this.pc.getLocalStreams.bind(this.pc);
-    this.getRemoteStreams = this.pc.getRemoteStreams.bind(this.pc);
-    this.addStream = this.pc.addStream.bind(this.pc);
-    this.removeStream = this.pc.removeStream.bind(this.pc);
-
-    // proxy events
-    this.pc.on('*', function () {
-        self.emit.apply(self, arguments);
-    });
-
-    // proxy some events directly
-    this.pc.onremovestream = this.emit.bind(this, 'removeStream');
-    this.pc.onaddstream = this.emit.bind(this, 'addStream');
-    this.pc.onnegotiationneeded = this.emit.bind(this, 'negotiationNeeded');
-    this.pc.oniceconnectionstatechange = this.emit.bind(this, 'iceConnectionStateChange');
-    this.pc.onsignalingstatechange = this.emit.bind(this, 'signalingStateChange');
-
-    // handle ice candidate and data channel events
-    this.pc.onicecandidate = this._onIce.bind(this);
-    this.pc.ondatachannel = this._onDataChannel.bind(this);
-
-    this.localDescription = {
-        contents: []
-    };
-    this.remoteDescription = {
-        contents: []
-    };
-
-    this.config = {
-        debug: false,
-        sid: '',
-        isInitiator: true,
-        sdpSessionID: Date.now(),
-        useJingle: false
-    };
-
-    this.iceCredentials = {
-        local: {},
-        remote: {}
-    };
-
-    // apply our config
-    for (item in config) {
-        this.config[item] = config[item];
-    }
-
-    if (this.config.debug) {
-        this.on('*', function () {
-            var logger = config.logger || console;
-            logger.log('PeerConnection event:', arguments);
-        });
-    }
-    this.hadLocalStunCandidate = false;
-    this.hadRemoteStunCandidate = false;
-    this.hadLocalRelayCandidate = false;
-    this.hadRemoteRelayCandidate = false;
-
-    this.hadLocalIPv6Candidate = false;
-    this.hadRemoteIPv6Candidate = false;
-
-    // keeping references for all our data channels
-    // so they dont get garbage collected
-    // can be removed once the following bugs have been fixed
-    // https://crbug.com/405545
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=964092
-    // to be filed for opera
-    this._remoteDataChannels = [];
-    this._localDataChannels = [];
-
-    this._candidateBuffer = [];
-}
-
-util.inherits(PeerConnection, WildEmitter);
-
-Object.defineProperty(PeerConnection.prototype, 'signalingState', {
-    get: function () {
-        return this.pc.signalingState;
-    }
-});
-Object.defineProperty(PeerConnection.prototype, 'iceConnectionState', {
-    get: function () {
-        return this.pc.iceConnectionState;
-    }
-});
-
-PeerConnection.prototype._role = function () {
-    return this.isInitiator ? 'initiator' : 'responder';
-};
-
-// Add a stream to the peer connection object
-PeerConnection.prototype.addStream = function (stream) {
-    this.localStream = stream;
-    this.pc.addStream(stream);
-};
-
-// helper function to check if a remote candidate is a stun/relay
-// candidate or an ipv6 candidate
-PeerConnection.prototype._checkLocalCandidate = function (candidate) {
-    var cand = SJJ.toCandidateJSON(candidate);
-    if (cand.type == 'srflx') {
-        this.hadLocalStunCandidate = true;
-    } else if (cand.type == 'relay') {
-        this.hadLocalRelayCandidate = true;
-    }
-    if (cand.ip.indexOf(':') != -1) {
-        this.hadLocalIPv6Candidate = true;
-    }
-};
-
-// helper function to check if a remote candidate is a stun/relay
-// candidate or an ipv6 candidate
-PeerConnection.prototype._checkRemoteCandidate = function (candidate) {
-    var cand = SJJ.toCandidateJSON(candidate);
-    if (cand.type == 'srflx') {
-        this.hadRemoteStunCandidate = true;
-    } else if (cand.type == 'relay') {
-        this.hadRemoteRelayCandidate = true;
-    }
-    if (cand.ip.indexOf(':') != -1) {
-        this.hadRemoteIPv6Candidate = true;
-    }
-};
-
-
-// Init and add ice candidate object with correct constructor
-PeerConnection.prototype.processIce = function (update, cb) {
-    cb = cb || function () {};
-    var self = this;
-
-    // ignore any added ice candidates to avoid errors. why does the
-    // spec not do this?
-    if (this.pc.signalingState === 'closed') return cb();
-
-    if (update.contents || (update.jingle && update.jingle.contents)) {
-        var contentNames = this.remoteDescription.contents.map(function (c) { return c.name; });
-        var contents = update.contents || update.jingle.contents;
-
-        contents.forEach(function (content) {
-            var transport = content.transport || {};
-            var candidates = transport.candidates || [];
-            var mline = contentNames.indexOf(content.name);
-            var mid = content.name;
-            var remoteContent = self.remoteDescription.contents.find(function (c) {
-                return c.name === content.name;
-            });
-
-            // process candidates as a callback, in case we need to
-            // update ufrag and pwd with offer/answer
-            var processCandidates = function () {
-                candidates.forEach(
-                    function (candidate) {
-                    var iceCandidate = SJJ.toCandidateSDP(candidate) + '\r\n';
-                    self.pc.addIceCandidate(
-                        new RTCIceCandidate({
-                            candidate: iceCandidate,
-                            sdpMLineIndex: mline,
-                            sdpMid: mid
-                        }), function () {
-                            // well, this success callback is pretty meaningless
-                        },
-                        function (err) {
-                            self.emit('error', err);
-                        }
-                    );
-                    self._checkRemoteCandidate(iceCandidate);
-                });
-                cb();
-            };
-
-            if (self.iceCredentials.remote[content.name] && transport.ufrag &&
-                self.iceCredentials.remote[content.name].ufrag !== transport.ufrag) {
-                if (remoteContent) {
-                    remoteContent.transport.ufrag = transport.ufrag;
-                    remoteContent.transport.pwd = transport.pwd;
-                    var offer = {
-                        type: 'offer',
-                        jingle: self.remoteDescription
-                    };
-                    offer.sdp = SJJ.toSessionSDP(offer.jingle, {
-                        sid: self.config.sdpSessionID,
-                        role: self._role(),
-                        direction: 'incoming'
-                    });
-                    self.pc.setRemoteDescription(new RTCSessionDescription(offer),
-                        function () {
-                            processCandidates();
-                        },
-                        function (err) {
-                            self.emit('error', err);
-                        }
-                    );
-                } else {
-                    self.emit('error', 'ice restart failed to find matching content');
-                }
-            } else {
-                processCandidates();
-            }
-        });
-    } else {
-        // working around https://code.google.com/p/webrtc/issues/detail?id=3669
-        if (update.candidate && update.candidate.candidate.indexOf('a=') !== 0) {
-            update.candidate.candidate = 'a=' + update.candidate.candidate;
-        }
-
-        if (this.wtFirefox && this.firefoxcandidatebuffer !== null) {
-            // we cant add this yet due to https://bugzilla.mozilla.org/show_bug.cgi?id=1087551
-            if (this.pc.localDescription && this.pc.localDescription.type === 'offer') {
-                this.firefoxcandidatebuffer.push(update.candidate);
-                return cb();
-            }
-        }
-
-        self.pc.addIceCandidate(
-            new RTCIceCandidate(update.candidate),
-            function () { },
-            function (err) {
-                self.emit('error', err);
-            }
-        );
-        self._checkRemoteCandidate(update.candidate.candidate);
-        cb();
-    }
-};
-
-// Generate and emit an offer with the given constraints
-PeerConnection.prototype.offer = function (constraints, cb) {
-    var self = this;
-    var hasConstraints = arguments.length === 2;
-    var mediaConstraints = hasConstraints && constraints ? constraints : {
-            offerToReceiveAudio: 1,
-            offerToReceiveVideo: 1
-        };
-    cb = hasConstraints ? cb : constraints;
-    cb = cb || function () {};
-
-    if (this.pc.signalingState === 'closed') return cb('Already closed');
-
-    // Actually generate the offer
-    this.pc.createOffer(
-        function (offer) {
-            // does not work for jingle, but jingle.js doesn't need
-            // this hack...
-            var expandedOffer = {
-                type: 'offer',
-                sdp: offer.sdp
-            };
-            if (self.assumeSetLocalSuccess) {
-                self.emit('offer', expandedOffer);
-                cb(null, expandedOffer);
-            }
-            self._candidateBuffer = [];
-            self.pc.setLocalDescription(offer,
-                function () {
-                    var jingle;
-                    if (self.config.useJingle) {
-                        jingle = SJJ.toSessionJSON(offer.sdp, {
-                            role: self._role(),
-                            direction: 'outgoing'
-                        });
-                        jingle.sid = self.config.sid;
-                        self.localDescription = jingle;
-
-                        // Save ICE credentials
-                        jingle.contents.forEach(function (content) {
-                            var transport = content.transport || {};
-                            if (transport.ufrag) {
-                                self.iceCredentials.local[content.name] = {
-                                    ufrag: transport.ufrag,
-                                    pwd: transport.pwd
-                                };
-                            }
-                        });
-
-                        expandedOffer.jingle = jingle;
-                    }
-                    expandedOffer.sdp.split('\r\n').forEach(function (line) {
-                        if (line.indexOf('a=candidate:') === 0) {
-                            self._checkLocalCandidate(line);
-                        }
-                    });
-
-                    if (!self.assumeSetLocalSuccess) {
-                        self.emit('offer', expandedOffer);
-                        cb(null, expandedOffer);
-                    }
-                },
-                function (err) {
-                    self.emit('error', err);
-                    cb(err);
-                }
-            );
-        },
-        function (err) {
-            self.emit('error', err);
-            cb(err);
-        },
-        mediaConstraints
-    );
-};
-
-
-// Process an incoming offer so that ICE may proceed before deciding
-// to answer the request.
-PeerConnection.prototype.handleOffer = function (offer, cb) {
-    cb = cb || function () {};
-    var self = this;
-    offer.type = 'offer';
-    if (offer.jingle) {
-        if (this.enableChromeNativeSimulcast) {
-            offer.jingle.contents.forEach(function (content) {
-                if (content.name === 'video') {
-                    content.application.googConferenceFlag = true;
-                }
-
-            });
-        }
-        if (this.enableMultiStreamHacks) {
-            // add a mixed video stream as first stream
-            offer.jingle.contents.forEach(function (content) {
-                if (content.name === 'video') {
-                    var sources = content.application.sources || [];
-                    if (sources.length === 0 || sources[0].ssrc !== "3735928559") {
-                        sources.unshift({
-                            ssrc: "3735928559", // 0xdeadbeef
-                            parameters: [
-                                {
-                                    key: "cname",
-                                    value: "deadbeef"
-                                },
-                                {
-                                    key: "msid",
-                                    value: "mixyourfecintothis please"
-                                }
-                            ]
-                        });
-                        content.application.sources = sources;
-                    }
-                }
-            });
-        }
-        if (self.restrictBandwidth > 0) {
-            if (offer.jingle.contents.length >= 2 && offer.jingle.contents[1].name === 'video') {
-                var content = offer.jingle.contents[1];
-                var hasBw = content.application && content.application.bandwidth && content.application.bandwidth.bandwidth;
-                if (!hasBw) {
-                    offer.jingle.contents[1].application.bandwidth = { type: 'AS', bandwidth: self.restrictBandwidth.toString() };
-                    offer.sdp = SJJ.toSessionSDP(offer.jingle, {
-                        sid: self.config.sdpSessionID,
-                        role: self._role(),
-                        direction: 'outgoing'
-                    });
-                }
-            }
-        }
-        // Save ICE credentials
-        offer.jingle.contents.forEach(function (content) {
-            var transport = content.transport || {};
-            if (transport.ufrag) {
-                self.iceCredentials.remote[content.name] = {
-                    ufrag: transport.ufrag,
-                    pwd: transport.pwd
-                };
-            }
-        });
-        offer.sdp = SJJ.toSessionSDP(offer.jingle, {
-            sid: self.config.sdpSessionID,
-            role: self._role(),
-            direction: 'incoming'
-        });
-        self.remoteDescription = offer.jingle;
-    }
-    offer.sdp.split('\r\n').forEach(function (line) {
-        if (line.indexOf('a=candidate:') === 0) {
-            self._checkRemoteCandidate(line);
-        }
-    });
-    self.pc.setRemoteDescription(new RTCSessionDescription(offer),
-        function () {
-            cb();
-        },
-        cb
-    );
-};
-
-// Answer an offer with audio only
-PeerConnection.prototype.answerAudioOnly = function (cb) {
-    var mediaConstraints = {
-            mandatory: {
-                OfferToReceiveAudio: true,
-                OfferToReceiveVideo: false
-            }
-        };
-    this._answer(mediaConstraints, cb);
-};
-
-// Answer an offer without offering to recieve
-PeerConnection.prototype.answerBroadcastOnly = function (cb) {
-    var mediaConstraints = {
-            mandatory: {
-                OfferToReceiveAudio: false,
-                OfferToReceiveVideo: false
-            }
-        };
-    this._answer(mediaConstraints, cb);
-};
-
-// Answer an offer with given constraints default is audio/video
-PeerConnection.prototype.answer = function (constraints, cb) {
-    var hasConstraints = arguments.length === 2;
-    var callback = hasConstraints ? cb : constraints;
-    var mediaConstraints = hasConstraints && constraints ? constraints : {
-            mandatory: {
-                OfferToReceiveAudio: true,
-                OfferToReceiveVideo: true
-            }
-        };
-
-    this._answer(mediaConstraints, callback);
-};
-
-// Process an answer
-PeerConnection.prototype.handleAnswer = function (answer, cb) {
-    cb = cb || function () {};
-    var self = this;
-    if (answer.jingle) {
-        answer.sdp = SJJ.toSessionSDP(answer.jingle, {
-            sid: self.config.sdpSessionID,
-            role: self._role(),
-            direction: 'incoming'
-        });
-        self.remoteDescription = answer.jingle;
-
-        // Save ICE credentials
-        answer.jingle.contents.forEach(function (content) {
-            var transport = content.transport || {};
-            if (transport.ufrag) {
-                self.iceCredentials.remote[content.name] = {
-                    ufrag: transport.ufrag,
-                    pwd: transport.pwd
-                };
-            }
-        });
-    }
-    answer.sdp.split('\r\n').forEach(function (line) {
-        if (line.indexOf('a=candidate:') === 0) {
-            self._checkRemoteCandidate(line);
-        }
-    });
-    self.pc.setRemoteDescription(
-        new RTCSessionDescription(answer),
-        function () {
-            if (self.wtFirefox) {
-                window.setTimeout(function () {
-                    self.firefoxcandidatebuffer.forEach(function (candidate) {
-                        // add candidates later
-                        self.pc.addIceCandidate(
-                            new RTCIceCandidate(candidate),
-                            function () { },
-                            function (err) {
-                                console.log("error", err);
-                                self.emit('error', err);
-                            }
-                        );
-                        self._checkRemoteCandidate(candidate.candidate);
-                    });
-                    self.firefoxcandidatebuffer = null;
-                }, self.wtFirefox);
-            }
-            cb(null);
-        },
-        cb
-    );
-};
-
-// Close the peer connection
-PeerConnection.prototype.close = function () {
-    this.pc.close();
-
-    this._localDataChannels = [];
-    this._remoteDataChannels = [];
-
-    this.emit('close');
-};
-
-// Internal code sharing for various types of answer methods
-PeerConnection.prototype._answer = function (constraints, cb) {
-    cb = cb || function () {};
-    var self = this;
-    if (!this.pc.remoteDescription) {
-        // the old API is used, call handleOffer
-        throw new Error('remoteDescription not set');
-    }
-
-    if (this.pc.signalingState === 'closed') return cb('Already closed');
-
-    self.pc.createAnswer(
-        function (answer) {
-            var sim = [];
-            if (self.enableChromeNativeSimulcast) {
-                // native simulcast part 1: add another SSRC
-                answer.jingle = SJJ.toSessionJSON(answer.sdp, {
-                    role: self._role(),
-                    direction: 'outgoing'
-                });
-                if (answer.jingle.contents.length >= 2 && answer.jingle.contents[1].name === 'video') {
-                    var groups = answer.jingle.contents[1].application.sourceGroups || [];
-                    var hasSim = false;
-                    groups.forEach(function (group) {
-                        if (group.semantics == 'SIM') hasSim = true;
-                    });
-                    if (!hasSim &&
-                        answer.jingle.contents[1].application.sources.length) {
-                        var newssrc = JSON.parse(JSON.stringify(answer.jingle.contents[1].application.sources[0]));
-                        newssrc.ssrc = '' + Math.floor(Math.random() * 0xffffffff); // FIXME: look for conflicts
-                        answer.jingle.contents[1].application.sources.push(newssrc);
-
-                        sim.push(answer.jingle.contents[1].application.sources[0].ssrc);
-                        sim.push(newssrc.ssrc);
-                        groups.push({
-                            semantics: 'SIM',
-                            sources: sim
-                        });
-
-                        // also create an RTX one for the SIM one
-                        var rtxssrc = JSON.parse(JSON.stringify(newssrc));
-                        rtxssrc.ssrc = '' + Math.floor(Math.random() * 0xffffffff); // FIXME: look for conflicts
-                        answer.jingle.contents[1].application.sources.push(rtxssrc);
-                        groups.push({
-                            semantics: 'FID',
-                            sources: [newssrc.ssrc, rtxssrc.ssrc]
-                        });
-
-                        answer.jingle.contents[1].application.sourceGroups = groups;
-                        answer.sdp = SJJ.toSessionSDP(answer.jingle, {
-                            sid: self.config.sdpSessionID,
-                            role: self._role(),
-                            direction: 'outgoing'
-                        });
-                    }
-                }
-            }
-            var expandedAnswer = {
-                type: 'answer',
-                sdp: answer.sdp
-            };
-            if (self.assumeSetLocalSuccess) {
-                // not safe to do when doing simulcast mangling
-                self.emit('answer', expandedAnswer);
-                cb(null, expandedAnswer);
-            }
-            self._candidateBuffer = [];
-            self.pc.setLocalDescription(answer,
-                function () {
-                    if (self.config.useJingle) {
-                        var jingle = SJJ.toSessionJSON(answer.sdp, {
-                            role: self._role(),
-                            direction: 'outgoing'
-                        });
-                        jingle.sid = self.config.sid;
-                        self.localDescription = jingle;
-                        expandedAnswer.jingle = jingle;
-                    }
-                    if (self.enableChromeNativeSimulcast) {
-                        // native simulcast part 2:
-                        // signal multiple tracks to the receiver
-                        // for anything in the SIM group
-                        if (!expandedAnswer.jingle) {
-                            expandedAnswer.jingle = SJJ.toSessionJSON(answer.sdp, {
-                                role: self._role(),
-                                direction: 'outgoing'
-                            });
-                        }
-                        expandedAnswer.jingle.contents[1].application.sources.forEach(function (source, idx) {
-                            // the floor idx/2 is a hack that relies on a particular order
-                            // of groups, alternating between sim and rtx
-                            source.parameters = source.parameters.map(function (parameter) {
-                                if (parameter.key === 'msid') {
-                                    parameter.value += '-' + Math.floor(idx / 2);
-                                }
-                                return parameter;
-                            });
-                        });
-                        expandedAnswer.sdp = SJJ.toSessionSDP(expandedAnswer.jingle, {
-                            sid: self.sdpSessionID,
-                            role: self._role(),
-                            direction: 'outgoing'
-                        });
-                    }
-                    expandedAnswer.sdp.split('\r\n').forEach(function (line) {
-                        if (line.indexOf('a=candidate:') === 0) {
-                            self._checkLocalCandidate(line);
-                        }
-                    });
-                    if (!self.assumeSetLocalSuccess) {
-                        self.emit('answer', expandedAnswer);
-                        cb(null, expandedAnswer);
-                    }
-                },
-                function (err) {
-                    self.emit('error', err);
-                    cb(err);
-                }
-            );
-        },
-        function (err) {
-            self.emit('error', err);
-            cb(err);
-        },
-        constraints
-    );
-};
-
-// Internal method for emitting ice candidates on our peer object
-PeerConnection.prototype._onIce = function (event) {
-    var self = this;
-    if (event.candidate) {
-        if (this.dontSignalCandidates) return;
-        var ice = event.candidate;
-
-        var expandedCandidate = {
-            candidate: {
-                candidate: ice.candidate,
-                sdpMid: ice.sdpMid,
-                sdpMLineIndex: ice.sdpMLineIndex
-            }
-        };
-        this._checkLocalCandidate(ice.candidate);
-
-        var cand = SJJ.toCandidateJSON(ice.candidate);
-
-        var already;
-        var idx;
-        if (this.eliminateDuplicateCandidates && cand.type === 'relay') {
-            // drop candidates with same foundation, component
-            // take local type pref into account so we don't ignore udp
-            // ones when we know about a TCP one. unlikely but...
-            already = this._candidateBuffer.filter(
-                function (c) {
-                    return c.type === 'relay';
-                }).map(function (c) {
-                    return c.foundation + ':' + c.component;
-                }
-            );
-            idx = already.indexOf(cand.foundation + ':' + cand.component);
-            // remember: local type pref of udp is 0, tcp 1, tls 2
-            if (idx > -1 && ((cand.priority >> 24) >= (already[idx].priority >> 24))) {
-                // drop it, same foundation with higher (worse) type pref
-                return;
-            }
-        }
-        if (this.config.bundlePolicy === 'max-bundle') {
-            // drop candidates which are duplicate for audio/video/data
-            // duplicate means same host/port but different sdpMid
-            already = this._candidateBuffer.filter(
-                function (c) {
-                    return cand.type === c.type;
-                }).map(function (cand) {
-                    return cand.address + ':' + cand.port;
-                }
-            );
-            idx = already.indexOf(cand.address + ':' + cand.port);
-            if (idx > -1) return;
-        }
-        // also drop rtcp candidates since we know the peer supports RTCP-MUX
-        // this is a workaround until browsers implement this natively
-        if (this.config.rtcpMuxPolicy === 'require' && cand.component === '2') {
-            return;
-        }
-        this._candidateBuffer.push(cand);
-
-        if (self.config.useJingle) {
-            if (!ice.sdpMid) { // firefox doesn't set this
-                if (self.pc.remoteDescription && self.pc.remoteDescription.type === 'offer') {
-                    // preserve name from remote
-                    ice.sdpMid = self.remoteDescription.contents[ice.sdpMLineIndex].name;
-                } else {
-                    ice.sdpMid = self.localDescription.contents[ice.sdpMLineIndex].name;
-                }
-            }
-            if (!self.iceCredentials.local[ice.sdpMid]) {
-                var jingle = SJJ.toSessionJSON(self.pc.localDescription.sdp, {
-                    role: self._role(),
-                    direction: 'outgoing'
-                });
-                jingle.contents.forEach(function (content) {
-                    var transport = content.transport || {};
-                    if (transport.ufrag) {
-                        self.iceCredentials.local[content.name] = {
-                            ufrag: transport.ufrag,
-                            pwd: transport.pwd
-                        };
-                    }
-                });
-            }
-            expandedCandidate.jingle = {
-                contents: [{
-                    name: ice.sdpMid,
-                    creator: self._role(),
-                    transport: {
-                        transportType: 'iceUdp',
-                        ufrag: self.iceCredentials.local[ice.sdpMid].ufrag,
-                        pwd: self.iceCredentials.local[ice.sdpMid].pwd,
-                        candidates: [
-                            cand
-                        ]
-                    }
-                }]
-            };
-            if (self.batchIceCandidates > 0) {
-                if (self.batchedIceCandidates.length === 0) {
-                    window.setTimeout(function () {
-                        var contents = {};
-                        self.batchedIceCandidates.forEach(function (content) {
-                            content = content.contents[0];
-                            if (!contents[content.name]) contents[content.name] = content;
-                            contents[content.name].transport.candidates.push(content.transport.candidates[0]);
-                        });
-                        var newCand = {
-                            jingle: {
-                                contents: []
-                            }
-                        };
-                        Object.keys(contents).forEach(function (name) {
-                            newCand.jingle.contents.push(contents[name]);
-                        });
-                        self.batchedIceCandidates = [];
-                        self.emit('ice', newCand);
-                    }, self.batchIceCandidates);
-                }
-                self.batchedIceCandidates.push(expandedCandidate.jingle);
-                return;
-            }
-
-        }
-        this.emit('ice', expandedCandidate);
-    } else {
-        this.emit('endOfCandidates');
-    }
-};
-
-// Internal method for processing a new data channel being added by the
-// other peer.
-PeerConnection.prototype._onDataChannel = function (event) {
-    // make sure we keep a reference so this doesn't get garbage collected
-    var channel = event.channel;
-    this._remoteDataChannels.push(channel);
-
-    this.emit('addChannel', channel);
-};
-
-// Create a data channel spec reference:
-// http://dev.w3.org/2011/webrtc/editor/webrtc.html#idl-def-RTCDataChannelInit
-PeerConnection.prototype.createDataChannel = function (name, opts) {
-    var channel = this.pc.createDataChannel(name, opts);
-
-    // make sure we keep a reference so this doesn't get garbage collected
-    this._localDataChannels.push(channel);
-
-    return channel;
-};
-
-PeerConnection.prototype.getStats = function (cb) {
-    this.pc.getStats(null,
-        function (res) {
-            cb(null, res);
-        },
-        function (err) {
-            cb(err);
-        }
-    );
-};
-
-module.exports = PeerConnection;
-
-},{"sdp-jingle-json":217,"traceablepeerconnection":270,"util":286,"webrtc-adapter":271,"wildemitter":281}],217:[function(require,module,exports){
+},{"./lib/React":104}],221:[function(require,module,exports){
 var toSDP = require('./lib/tosdp');
 var toJSON = require('./lib/tojson');
 
@@ -28052,7 +29795,7 @@ exports.toCandidateJSON = toJSON.toCandidateJSON;
 exports.toMediaJSON = toJSON.toMediaJSON;
 exports.toSessionJSON = toJSON.toSessionJSON;
 
-},{"./lib/tojson":220,"./lib/tosdp":221}],218:[function(require,module,exports){
+},{"./lib/tojson":224,"./lib/tosdp":225}],222:[function(require,module,exports){
 exports.lines = function (sdp) {
     return sdp.split('\r\n').filter(function (line) {
         return line.length > 0;
@@ -28323,7 +30066,7 @@ exports.msid = function (line) {
     };
 };
 
-},{}],219:[function(require,module,exports){
+},{}],223:[function(require,module,exports){
 module.exports = {
     initiator: {
         incoming: {
@@ -28371,7 +30114,7 @@ module.exports = {
     }
 };
 
-},{}],220:[function(require,module,exports){
+},{}],224:[function(require,module,exports){
 var SENDERS = require('./senders');
 var parsers = require('./parsers');
 var idCounter = Math.random();
@@ -28595,7 +30338,7 @@ exports.toCandidateJSON = function (line) {
     return candidate;
 };
 
-},{"./parsers":218,"./senders":219}],221:[function(require,module,exports){
+},{"./parsers":222,"./senders":223}],225:[function(require,module,exports){
 var SENDERS = require('./senders');
 
 
@@ -28834,13 +30577,13 @@ exports.toCandidateSDP = function (candidate) {
     return 'a=candidate:' + sdp.join(' ');
 };
 
-},{"./senders":219}],222:[function(require,module,exports){
-arguments[4][47][0].apply(exports,arguments)
-},{"dup":47}],223:[function(require,module,exports){
+},{"./senders":223}],226:[function(require,module,exports){
+arguments[4][51][0].apply(exports,arguments)
+},{"dup":51}],227:[function(require,module,exports){
 
 module.exports = require('./lib/');
 
-},{"./lib/":224}],224:[function(require,module,exports){
+},{"./lib/":228}],228:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -28929,7 +30672,7 @@ exports.connect = lookup;
 exports.Manager = require('./manager');
 exports.Socket = require('./socket');
 
-},{"./manager":225,"./socket":227,"./url":228,"debug":232,"socket.io-parser":265}],225:[function(require,module,exports){
+},{"./manager":229,"./socket":231,"./url":232,"debug":236,"socket.io-parser":269}],229:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -29434,7 +31177,7 @@ Manager.prototype.onreconnect = function(){
   this.emitAll('reconnect', attempt);
 };
 
-},{"./on":226,"./socket":227,"./url":228,"backo2":229,"component-bind":230,"component-emitter":231,"debug":232,"engine.io-client":233,"indexof":261,"object-component":262,"socket.io-parser":265}],226:[function(require,module,exports){
+},{"./on":230,"./socket":231,"./url":232,"backo2":233,"component-bind":234,"component-emitter":235,"debug":236,"engine.io-client":237,"indexof":265,"object-component":266,"socket.io-parser":269}],230:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -29460,7 +31203,7 @@ function on(obj, ev, fn) {
   };
 }
 
-},{}],227:[function(require,module,exports){
+},{}],231:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -29847,7 +31590,7 @@ Socket.prototype.disconnect = function(){
   return this;
 };
 
-},{"./on":226,"component-bind":230,"component-emitter":231,"debug":232,"has-binary":259,"socket.io-parser":265,"to-array":269}],228:[function(require,module,exports){
+},{"./on":230,"component-bind":234,"component-emitter":235,"debug":236,"has-binary":263,"socket.io-parser":269,"to-array":273}],232:[function(require,module,exports){
 (function (global){
 
 /**
@@ -29924,7 +31667,7 @@ function url(uri, loc){
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"debug":232,"parseuri":263}],229:[function(require,module,exports){
+},{"debug":236,"parseuri":267}],233:[function(require,module,exports){
 
 /**
  * Expose `Backoff`.
@@ -30011,7 +31754,7 @@ Backoff.prototype.setJitter = function(jitter){
 };
 
 
-},{}],230:[function(require,module,exports){
+},{}],234:[function(require,module,exports){
 /**
  * Slice reference.
  */
@@ -30036,7 +31779,7 @@ module.exports = function(obj, fn){
   }
 };
 
-},{}],231:[function(require,module,exports){
+},{}],235:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -30202,7 +31945,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],232:[function(require,module,exports){
+},{}],236:[function(require,module,exports){
 
 /**
  * Expose `debug()` as the module.
@@ -30341,11 +32084,11 @@ try {
   if (window.localStorage) debug.enable(localStorage.debug);
 } catch(e){}
 
-},{}],233:[function(require,module,exports){
+},{}],237:[function(require,module,exports){
 
 module.exports =  require('./lib/');
 
-},{"./lib/":234}],234:[function(require,module,exports){
+},{"./lib/":238}],238:[function(require,module,exports){
 
 module.exports = require('./socket');
 
@@ -30357,7 +32100,7 @@ module.exports = require('./socket');
  */
 module.exports.parser = require('engine.io-parser');
 
-},{"./socket":235,"engine.io-parser":247}],235:[function(require,module,exports){
+},{"./socket":239,"engine.io-parser":251}],239:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -31066,7 +32809,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./transport":236,"./transports":237,"component-emitter":231,"debug":244,"engine.io-parser":247,"indexof":261,"parsejson":256,"parseqs":257,"parseuri":258}],236:[function(require,module,exports){
+},{"./transport":240,"./transports":241,"component-emitter":235,"debug":248,"engine.io-parser":251,"indexof":265,"parsejson":260,"parseqs":261,"parseuri":262}],240:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -31227,7 +32970,7 @@ Transport.prototype.onClose = function () {
   this.emit('close');
 };
 
-},{"component-emitter":231,"engine.io-parser":247}],237:[function(require,module,exports){
+},{"component-emitter":235,"engine.io-parser":251}],241:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies
@@ -31284,7 +33027,7 @@ function polling(opts){
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling-jsonp":238,"./polling-xhr":239,"./websocket":241,"xmlhttprequest":242}],238:[function(require,module,exports){
+},{"./polling-jsonp":242,"./polling-xhr":243,"./websocket":245,"xmlhttprequest":246}],242:[function(require,module,exports){
 (function (global){
 
 /**
@@ -31521,7 +33264,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":240,"component-inherit":243}],239:[function(require,module,exports){
+},{"./polling":244,"component-inherit":247}],243:[function(require,module,exports){
 (function (global){
 /**
  * Module requirements.
@@ -31909,7 +33652,7 @@ function unloadHandler() {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":240,"component-emitter":231,"component-inherit":243,"debug":244,"xmlhttprequest":242}],240:[function(require,module,exports){
+},{"./polling":244,"component-emitter":235,"component-inherit":247,"debug":248,"xmlhttprequest":246}],244:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -32156,7 +33899,7 @@ Polling.prototype.uri = function(){
   return schema + '://' + this.hostname + port + this.path + query;
 };
 
-},{"../transport":236,"component-inherit":243,"debug":244,"engine.io-parser":247,"parseqs":257,"xmlhttprequest":242}],241:[function(require,module,exports){
+},{"../transport":240,"component-inherit":247,"debug":248,"engine.io-parser":251,"parseqs":261,"xmlhttprequest":246}],245:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -32396,7 +34139,7 @@ WS.prototype.check = function(){
   return !!WebSocket && !('__initialize' in WebSocket && this.name === WS.prototype.name);
 };
 
-},{"../transport":236,"component-inherit":243,"debug":244,"engine.io-parser":247,"parseqs":257,"ws":282}],242:[function(require,module,exports){
+},{"../transport":240,"component-inherit":247,"debug":248,"engine.io-parser":251,"parseqs":261,"ws":286}],246:[function(require,module,exports){
 // browser shim for xmlhttprequest module
 var hasCORS = require('has-cors');
 
@@ -32434,7 +34177,7 @@ module.exports = function(opts) {
   }
 }
 
-},{"has-cors":254}],243:[function(require,module,exports){
+},{"has-cors":258}],247:[function(require,module,exports){
 
 module.exports = function(a, b){
   var fn = function(){};
@@ -32442,7 +34185,7 @@ module.exports = function(a, b){
   a.prototype = new fn;
   a.prototype.constructor = a;
 };
-},{}],244:[function(require,module,exports){
+},{}],248:[function(require,module,exports){
 
 /**
  * This is the web browser implementation of `debug()`.
@@ -32591,7 +34334,7 @@ function load() {
 
 exports.enable(load());
 
-},{"./debug":245}],245:[function(require,module,exports){
+},{"./debug":249}],249:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -32790,7 +34533,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":246}],246:[function(require,module,exports){
+},{"ms":250}],250:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -32903,7 +34646,7 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}],247:[function(require,module,exports){
+},{}],251:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -33501,7 +35244,7 @@ exports.decodePayloadAsBinary = function (data, binaryType, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./keys":248,"after":249,"arraybuffer.slice":250,"base64-arraybuffer":251,"blob":252,"has-binary":259,"utf8":253}],248:[function(require,module,exports){
+},{"./keys":252,"after":253,"arraybuffer.slice":254,"base64-arraybuffer":255,"blob":256,"has-binary":263,"utf8":257}],252:[function(require,module,exports){
 
 /**
  * Gets the keys for an object.
@@ -33522,7 +35265,7 @@ module.exports = Object.keys || function keys (obj){
   return arr;
 };
 
-},{}],249:[function(require,module,exports){
+},{}],253:[function(require,module,exports){
 module.exports = after
 
 function after(count, callback, err_cb) {
@@ -33552,7 +35295,7 @@ function after(count, callback, err_cb) {
 
 function noop() {}
 
-},{}],250:[function(require,module,exports){
+},{}],254:[function(require,module,exports){
 /**
  * An abstraction for slicing an arraybuffer even when
  * ArrayBuffer.prototype.slice is not supported
@@ -33583,7 +35326,7 @@ module.exports = function(arraybuffer, start, end) {
   return result.buffer;
 };
 
-},{}],251:[function(require,module,exports){
+},{}],255:[function(require,module,exports){
 /*
  * base64-arraybuffer
  * https://github.com/niklasvh/base64-arraybuffer
@@ -33644,7 +35387,7 @@ module.exports = function(arraybuffer, start, end) {
   };
 })("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
 
-},{}],252:[function(require,module,exports){
+},{}],256:[function(require,module,exports){
 (function (global){
 /**
  * Create a blob builder even when vendor prefixes exist
@@ -33744,7 +35487,7 @@ module.exports = (function() {
 })();
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],253:[function(require,module,exports){
+},{}],257:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/utf8js v2.0.0 by @mathias */
 ;(function(root) {
@@ -33992,7 +35735,7 @@ module.exports = (function() {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],254:[function(require,module,exports){
+},{}],258:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -34017,7 +35760,7 @@ try {
   module.exports = false;
 }
 
-},{"global":255}],255:[function(require,module,exports){
+},{"global":259}],259:[function(require,module,exports){
 
 /**
  * Returns `this`. Execute this without a "context" (i.e. without it being
@@ -34027,7 +35770,7 @@ try {
 
 module.exports = (function () { return this; })();
 
-},{}],256:[function(require,module,exports){
+},{}],260:[function(require,module,exports){
 (function (global){
 /**
  * JSON parse.
@@ -34062,7 +35805,7 @@ module.exports = function parsejson(data) {
   }
 };
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],257:[function(require,module,exports){
+},{}],261:[function(require,module,exports){
 /**
  * Compiles a querystring
  * Returns string representation of the object
@@ -34101,7 +35844,7 @@ exports.decode = function(qs){
   return qry;
 };
 
-},{}],258:[function(require,module,exports){
+},{}],262:[function(require,module,exports){
 /**
  * Parses an URI
  *
@@ -34142,7 +35885,7 @@ module.exports = function parseuri(str) {
     return uri;
 };
 
-},{}],259:[function(require,module,exports){
+},{}],263:[function(require,module,exports){
 (function (global){
 
 /*
@@ -34204,12 +35947,12 @@ function hasBinary(data) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"isarray":260}],260:[function(require,module,exports){
+},{"isarray":264}],264:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],261:[function(require,module,exports){
+},{}],265:[function(require,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -34220,7 +35963,7 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}],262:[function(require,module,exports){
+},{}],266:[function(require,module,exports){
 
 /**
  * HOP ref.
@@ -34305,7 +36048,7 @@ exports.length = function(obj){
 exports.isEmpty = function(obj){
   return 0 == exports.length(obj);
 };
-},{}],263:[function(require,module,exports){
+},{}],267:[function(require,module,exports){
 /**
  * Parses an URI
  *
@@ -34332,7 +36075,7 @@ module.exports = function parseuri(str) {
   return uri;
 };
 
-},{}],264:[function(require,module,exports){
+},{}],268:[function(require,module,exports){
 (function (global){
 /*global Blob,File*/
 
@@ -34477,7 +36220,7 @@ exports.removeBlobs = function(data, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./is-buffer":266,"isarray":267}],265:[function(require,module,exports){
+},{"./is-buffer":270,"isarray":271}],269:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -34879,7 +36622,7 @@ function error(data){
   };
 }
 
-},{"./binary":264,"./is-buffer":266,"component-emitter":231,"debug":232,"isarray":267,"json3":268}],266:[function(require,module,exports){
+},{"./binary":268,"./is-buffer":270,"component-emitter":235,"debug":236,"isarray":271,"json3":272}],270:[function(require,module,exports){
 (function (global){
 
 module.exports = isBuf;
@@ -34896,9 +36639,9 @@ function isBuf(obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],267:[function(require,module,exports){
-arguments[4][260][0].apply(exports,arguments)
-},{"dup":260}],268:[function(require,module,exports){
+},{}],271:[function(require,module,exports){
+arguments[4][264][0].apply(exports,arguments)
+},{"dup":264}],272:[function(require,module,exports){
 /*! JSON v3.2.6 | http://bestiejs.github.io/json3 | Copyright 2012-2013, Kit Cambridge | http://kit.mit-license.org */
 ;(function (window) {
   // Convenience aliases.
@@ -35761,7 +37504,7 @@ arguments[4][260][0].apply(exports,arguments)
   }
 }(this));
 
-},{}],269:[function(require,module,exports){
+},{}],273:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -35776,7 +37519,7 @@ function toArray(list, index) {
     return array
 }
 
-},{}],270:[function(require,module,exports){
+},{}],274:[function(require,module,exports){
 // based on https://github.com/ESTOS/strophe.jingle/
 // adds wildemitter support
 var util = require('util');
@@ -35997,25 +37740,25 @@ TraceablePeerConnection.prototype.getStats = function () {
 
 module.exports = TraceablePeerConnection;
 
-},{"util":286,"webrtc-adapter":271,"wildemitter":281}],271:[function(require,module,exports){
-arguments[4][48][0].apply(exports,arguments)
-},{"./chrome/chrome_shim":272,"./edge/edge_shim":274,"./firefox/firefox_shim":276,"./safari/safari_shim":278,"./utils":279,"dup":48}],272:[function(require,module,exports){
-arguments[4][60][0].apply(exports,arguments)
-},{"../utils.js":279,"./getusermedia":273,"dup":60}],273:[function(require,module,exports){
-arguments[4][50][0].apply(exports,arguments)
-},{"../utils.js":279,"dup":50}],274:[function(require,module,exports){
-arguments[4][62][0].apply(exports,arguments)
-},{"../utils":279,"./getusermedia":275,"dup":62,"sdp":222}],275:[function(require,module,exports){
+},{"util":290,"webrtc-adapter":275,"wildemitter":285}],275:[function(require,module,exports){
 arguments[4][52][0].apply(exports,arguments)
-},{"dup":52}],276:[function(require,module,exports){
+},{"./chrome/chrome_shim":276,"./edge/edge_shim":278,"./firefox/firefox_shim":280,"./safari/safari_shim":282,"./utils":283,"dup":52}],276:[function(require,module,exports){
 arguments[4][64][0].apply(exports,arguments)
-},{"../utils":279,"./getusermedia":277,"dup":64}],277:[function(require,module,exports){
-arguments[4][65][0].apply(exports,arguments)
-},{"../utils":279,"dup":65}],278:[function(require,module,exports){
-arguments[4][55][0].apply(exports,arguments)
-},{"dup":55}],279:[function(require,module,exports){
+},{"../utils.js":283,"./getusermedia":277,"dup":64}],277:[function(require,module,exports){
+arguments[4][54][0].apply(exports,arguments)
+},{"../utils.js":283,"dup":54}],278:[function(require,module,exports){
+arguments[4][66][0].apply(exports,arguments)
+},{"../utils":283,"./getusermedia":279,"dup":66,"sdp":226}],279:[function(require,module,exports){
 arguments[4][56][0].apply(exports,arguments)
 },{"dup":56}],280:[function(require,module,exports){
+arguments[4][68][0].apply(exports,arguments)
+},{"../utils":283,"./getusermedia":281,"dup":68}],281:[function(require,module,exports){
+arguments[4][69][0].apply(exports,arguments)
+},{"../utils":283,"dup":69}],282:[function(require,module,exports){
+arguments[4][59][0].apply(exports,arguments)
+},{"dup":59}],283:[function(require,module,exports){
+arguments[4][60][0].apply(exports,arguments)
+},{"dup":60}],284:[function(require,module,exports){
 // created by @HenrikJoreteg
 var prefix;
 var version;
@@ -36062,7 +37805,7 @@ module.exports = {
     getUserMedia: getUserMedia
 };
 
-},{}],281:[function(require,module,exports){
+},{}],285:[function(require,module,exports){
 /*
 WildEmitter.js is a slim little event emitter by @henrikjoreteg largely based
 on @visionmedia's Emitter from UI Kit.
@@ -36217,7 +37960,7 @@ WildEmitter.mixin = function (constructor) {
 
 WildEmitter.mixin(WildEmitter);
 
-},{}],282:[function(require,module,exports){
+},{}],286:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -36262,7 +38005,7 @@ function ws(uri, protocols, opts) {
 
 if (WebSocket) ws.prototype = WebSocket.prototype;
 
-},{}],283:[function(require,module,exports){
+},{}],287:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -36287,7 +38030,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],284:[function(require,module,exports){
+},{}],288:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -36380,14 +38123,14 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],285:[function(require,module,exports){
+},{}],289:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],286:[function(require,module,exports){
+},{}],290:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -36977,4 +38720,4 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":285,"_process":284,"inherits":283}]},{},[11]);
+},{"./support/isBuffer":289,"_process":288,"inherits":287}]},{},[20]);

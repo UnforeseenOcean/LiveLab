@@ -94,7 +94,7 @@ LocalMedia.prototype.start = function (mediaConstraints, cb) {
 };
 
 /*dynamically add streams*/
-LocalMedia.prototype.addStream = function(audioSource, videoSource, mediaConstraints){
+LocalMedia.prototype.addStream = function(mediaConstraints){
      var self = this;
      var constraints = mediaConstraints || this.config.media;
     // var constraints = this.config.media;
@@ -104,8 +104,10 @@ LocalMedia.prototype.addStream = function(audioSource, videoSource, mediaConstra
   // };
   getUserMedia(constraints, function (err, stream) {
     console.log(stream);
-     self.localStreams.push(stream);
-     self.emit('additionalStream', stream);
+     var streamObj = {};
+    streamObj.stream = stream;
+    self.localStreams.push(streamObj);
+     self.emit('additionalStream', streamObj);
   });
 }
 

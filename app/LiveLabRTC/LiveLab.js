@@ -1,35 +1,55 @@
 var LiveLabRTC = require('./LiveLabRTC.js'); 
 var StreamHandler = require('./StreamHandler.js');
-var config = require('./config.json');
+var config = require('./../config.json');
 
 /* Main object for LiveLab. All of information about current connected streams is stored in the arrays
 this.localStreams and this.peers */ 
 function LiveLab(update){
-     var webrtc = new LiveLabRTC(config.rtc);
+  /*init webrtc based on settings defined in config.json */
+
+    var webrtc = new LiveLabRTC(config.rtc);
     console.log("WEBRTC", webrtc);
+
+    /* localStreams is an array of objects containing the local media:
+      {
+        stream: <MediaStreamObject>,
+        handler: <StreamHandlerObject>
+    }
+    */
     this.localStreams = webrtc.webrtc.localStreams;
+
+     /* peers is an array of objects containing peer streams:
+      {
+        stream: <MediaStreamObject>,
+        id: <peer id>,
+        handler: <StreamHandlerObject>,
+        pc: <rtcpeerconnection>,
+        channels: <array of data channels>
+    }
+    */
     this.peers = webrtc.webrtc.peers;
 
-
+    /* get room name from url. TO DO: read from config.json */
     var room = location.search && location.search.split('?')[1];
     this.room = room;
+
+    /*function to update render cycle when code as changed */
     this.update = update;
    
 
     this.initLocalStorage();
     this.initWebAudio();
-  
+    this.getOutputDevices();
 
-   
+   /*init webRTC event handlers */
     this.webrtc = webrtc;
     webrtc.on('readyToCall', function () {
         console.log(webrtc);
         this.localStreams = webrtc.webrtc.localStreams;
         window.localId = webrtc.connection.connection.id;
         if (this.room) webrtc.joinRoom(this.room);
-         var streamHandler = new StreamHandler(this.localStreams[0], this.audioContext, this.updateRender, this);
-        //this.props.updateLocalStreams(webrtc.webrtc.localStreams);
-        this.updateRender();
+         var streamHandler = new StreamHandler(this.localStreams[0], this.audioContext, this);
+        this.update();
     }.bind(this));
 
     webrtc.on('localScreenAdded', function (el) {
@@ -39,6 +59,19 @@ function LiveLab(update){
     webrtc.on("localScreenStopped", function (stream) {
         // to do: add to local screens list
     });
+
+    /* new local stream is added */
+     this.webrtc.on('additionalStream', function (streamObj) {
+        
+       // console.log("STREAM" ,streamObj);
+        //console.log("STREAM" ,this.webrtc);
+      //  var tracks = streamObj.stream.getTracks();
+      //  console.log(tracks);
+        var streamHandler = new StreamHandler(streamObj, this.audioContext, this);
+      //  
+      console.log(this);
+      this.update();
+    }.bind(this));
 
     webrtc.on('channelMessage', function (peer, label, data) {
         if (data.type=="chat") {
@@ -72,30 +105,50 @@ function LiveLab(update){
            // sessionControl.remoteMixerEvent(label, data.payload);
         }
     });
+  
+  webrtc.on('peerStreamAdded', function(streamObj){
+   // console.log("PEER STREAM ADDED", streamObj);
+    var streamHandler = new StreamHandler(streamObj, this.audioContext, this);
+    //console.log("PEER ADDED", this.peers);
+      //console.log(peer);
+    // console.log(this.webrtc);
+    this.update();
 
-     webrtc.on('videoAdded', function (peer) {
-         console.log("VIDEO ADDED", webrtc);
-         var streamHandler = new StreamHandler(peer, this.audioContext, this.updateRender, this);
-       //  this.props.updatePeers(webrtc.webrtc.peers);
-        this.updateRender();
-     }.bind(this));
+  }.bind(this));
 
     var self = this;
-    webrtc.on('videoRemoved', function (peer) {
-         this.props.updateRender();
+    webrtc.on('peerStreamRemoved', function (peer) {
+         this.update();
          /*TO DO: is any garbage collecting/ cleanup necessary on stream?*/
     }.bind(this));
 }
 
-LiveLab.prototype.updateRender = function(){
-  this.update();
-  //console.log(this);
+
+LiveLab.prototype.getOutputDevices = function(){
+  var devices = {};
+  devices.videoinput = [];
+  devices.audioinput = [];
+  devices.audiooutput = [];
+  navigator.mediaDevices.enumerateDevices()
+  .then(function(MediaDeviceInfo) { 
+    for(var i = 0; i < MediaDeviceInfo.length; i++){
+      var device = MediaDeviceInfo[i];
+      devices[device.kind].push(device);
+    }
+    this.devices = devices;
+    console.log(this);
+  }.bind(this));
 }
 
 LiveLab.prototype.initWebAudio = function(){
   window.AudioContext = window.AudioContext || window.webkitAudioContext;
   this.audioContext = new AudioContext();
 
+}
+
+LiveLab.prototype.newStream = function(constraints){
+ // console.log("ADD STREAM ", constraints);
+  this.webrtc.addStream(constraints);
 }
 
 LiveLab.prototype.initLocalStorage = function(){

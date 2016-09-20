@@ -1,6 +1,7 @@
 var React = require('react');
 var ReactDOM = require('react-dom');
 var VideoContainer = require('./VideoContainer.jsx');
+var OutputSettings = require('./OutputSettings.jsx');
 
 module.exports = React.createClass({
 	getInitialState: function(){
@@ -13,9 +14,15 @@ module.exports = React.createClass({
 		var isFirefox = typeof InstallTrigger !== 'undefined';
 		 var isChrome = !!window.chrome && !!window.chrome.webstore;
 		if(this.state.fullscreen){
-
+			if (isFirefox == true) {
+                this.childWindow.document.getElementsByTagName('video')[0].mozCancelFullscreen();
+            }
+            if (isChrome == true) {
+                this.childWindow.document.getElementsByTagName('video')[0].webkitExitFullscreen();
+            }
+            this.setState({fullscreen: true});
 		} else {
-			 if (isFirefox == true) {
+			if (isFirefox == true) {
                 this.childWindow.document.getElementsByTagName('video')[0].mozRequestFullScreen();
             }
             if (isChrome == true) {
@@ -25,28 +32,41 @@ module.exports = React.createClass({
 		}
 	},
 	showWindow: function(){
-		var peerWindow = window.open(null, "new window", 'popup');
-		var isFirefox = typeof InstallTrigger !== 'undefined';
-		 var isChrome = !!window.chrome && !!window.chrome.webstore;
-		if(isChrome){
-			var container = peerWindow.document.createElement("div");
-			peerWindow.document.body.appendChild(container);
-			ReactDOM.render(<VideoContainer stream={this.props.handler.stream} fullscreen={this.state.fullscreen} muted={true} />, container);
-		}
-		if(isFirefox){
-			peerWindow.onload = function() {
+		if(this.state.showWindow&&this.childWindow) {
+			this.childWindow.close();
+			this.setState({showWindow: false, fullscreen: false}); 
+		} else {
+			 var ip = window.location.host + window.location.pathname;
+			var peerWindow = window.open(null, this.props.handler.stream.id, 'popup');
+			var isFirefox = typeof InstallTrigger !== 'undefined';
+			 var isChrome = !!window.chrome && !!window.chrome.webstore;
+			if(isChrome){
 				var container = peerWindow.document.createElement("div");
 				peerWindow.document.body.appendChild(container);
+				peerWindow.document.head.innerHTML = "<link rel='stylesheet' href='https://"+ip+"css/main.css'>";
 				ReactDOM.render(<VideoContainer stream={this.props.handler.stream} fullscreen={this.state.fullscreen} muted={true} />, container);
-			}.bind(this);
+			}
+			if(isFirefox){
+				peerWindow.onload = function() {
+					var container = peerWindow.document.createElement("div");
+					peerWindow.document.body.appendChild(container);
+					ReactDOM.render(<VideoContainer stream={this.props.handler.stream} fullscreen={this.state.fullscreen} muted={true} />, container);
+				}.bind(this);
+			}
+			/* Detect when window is closed by user */
+			peerWindow.onbeforeunload = function(){ 
+				console.log("closing window");
+				this.setState({showWindow: false, fullscreen: false});
+			 }.bind(this);
+			this.childWindow = peerWindow;
+			this.setState({showWindow: true}); 
 		}
-		/* Detect when window is closed by user */
-		peerWindow.onbeforeunload = function(){ 
-			console.log("closing window");
-			this.setState({showWindow: false, fullscreen: false});
-		 }.bind(this);
-		this.childWindow = peerWindow;
-		this.setState({showWindow: true}); 
+	},
+	componentWillUnmount: function(){
+		/*close child window if stream remove */
+		if(this.state.showWindow){
+			this.showWindow();
+		}
 	},
 	render: function(){
 
@@ -64,14 +84,18 @@ module.exports = React.createClass({
 				controls.push(<i className="fa fa-clone stream-controls" onClick={this.showWindow}></i>);
 			} else {
 				controls.push(<i className="fa fa-clone stream-controls selected" onClick={this.showWindow}></i>);
-				controls.push(<i className="fa fa-expand stream-controls" onClick={this.toggleFullscreen}></i>);
+				if(!this.state.fullscreen){
+					controls.push(<i className="fa fa-expand stream-controls" onClick={this.toggleFullscreen}></i>);
+				} else {
+					controls.push(<i className="fa fa-compress stream-controls" onClick={this.toggleFullscreen}></i>);
+				}
 			}
 		}
 		controls.push(<i className="fa fa-cog stream-controls" onClick={this.showSettings}></i>);
 
 		var settings = [];
 		if(this.state.showSettings){
-			settings = <div> SETTINGS </div>;
+			settings = <OutputSettings {...this.props}/>;
 		}
 		var divStyle = {
 			position: "absolute",

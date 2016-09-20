@@ -2,7 +2,7 @@ var React = require('react');
 var Landing = require('./Landing.jsx');
 var ControlPanel = require('./ControlPanel.jsx');
 
-var LiveLab = require('./LiveLab.js');
+var LiveLab = require('./../LiveLabRTC/LiveLab.js');
 
 module.exports = React.createClass({
 	/*set room variables from config.json*/

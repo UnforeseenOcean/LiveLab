@@ -1,6 +1,6 @@
 var util = require('util');
 var webrtc = require('webrtcsupport');
-var PeerConnection = require('rtcpeerconnection');
+var PeerConnection = require('./rtcpeerconnection.js');
 var WildEmitter = require('wildemitter');
 var FileTransfer = require('filetransfer');
 
@@ -20,7 +20,9 @@ function Peer(options) {
     this.oneway = options.oneway || false;
     this.sharemyscreen = options.sharemyscreen || false;
     this.browserPrefix = options.prefix;
-    this.stream = options.stream;
+    this.streams = [];
+    
+   // this.stream = options.stream;
     this.enableDataChannels = options.enableDataChannels === undefined ? this.parent.config.enableDataChannels : options.enableDataChannels;
     this.receiveMedia = options.receiveMedia || this.parent.config.receiveMedia;
     this.channels = {};
@@ -35,6 +37,14 @@ function Peer(options) {
         if (self.parent.config.nick) offer.nick = self.parent.config.nick;
         self.send('offer', offer);
     });
+
+    /* when new streams are added, renegotiation is needed*/
+    this.pc.on('negotiationNeeded', function(e){
+        
+        this.pc.offer(this.receiveMedia, function (err, sessionDescription) {
+        //self.send('offer', sessionDescription);
+        });
+    }.bind(this));
     this.pc.on('answer', function (answer) {
         if (self.parent.config.nick) answer.nick = self.parent.config.nick;
         self.send('answer', answer);
@@ -42,11 +52,8 @@ function Peer(options) {
     this.pc.on('addStream', this.handleRemoteStreamAdded.bind(this));
     this.pc.on('addChannel', this.handleDataChannelAdded.bind(this));
     this.pc.on('removeStream', this.handleStreamRemoved.bind(this));
-    // Just fire negotiation needed events for now
-    // When browser re-negotiation handling seems to work
-    // we can use this as the trigger for starting the offer/answer process
-    // automatically. We'll just leave it be for now while this stabalizes.
-    this.pc.on('negotiationNeeded', this.emit.bind(this, 'negotiationNeeded'));
+    this.pc.on('addTrack', this.handleRemoteTrackAdded.bind(this));
+   
     this.pc.on('iceConnectionStateChange', this.emit.bind(this, 'iceConnectionStateChange'));
     this.pc.on('iceConnectionStateChange', function () {
         switch (self.pc.iceConnectionState) {
@@ -65,11 +72,11 @@ function Peer(options) {
 
     // handle screensharing/broadcast mode
     if (options.type === 'screen') {
-        if (this.parent.localScreen && this.sharemyscreen) {
-            this.logger.log('adding local screen stream to peer connection');
-            this.pc.addStream(this.parent.localScreen);
-            this.broadcaster = options.broadcaster;
-        }
+        // if (this.parent.localScreen && this.sharemyscreen) {
+        //     this.logger.log('adding local screen stream to peer connection');
+        //     this.pc.addStream(this.parent.localScreen);
+        //     this.broadcaster = options.broadcaster;
+        // }
     } else {
         this.parent.localStreams.forEach(function (stream) {
             self.pc.addStream(stream.stream);
@@ -141,6 +148,11 @@ Peer.prototype.handleMessage = function (message) {
     }
 };
 
+/* add new local stream to peer connection object */
+Peer.prototype.addStream = function(stream){
+    console.log("add stream to peer");
+     this.pc.addStream(stream);
+};
 // send via signalling channel
 Peer.prototype.send = function (messageType, payload) {
     var message = {
@@ -209,6 +221,15 @@ Peer.prototype.onIceCandidate = function (candidate) {
     }
 };
 
+/*Add track experimental feature: https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/addTrack*/
+Peer.prototype.addTrack = function(stream){
+    var tracks = stream.getTrack();
+    for(var i = 0; i < tracks.length; i++){
+        this.pc.addTrack(tracks[i], this.streams[0]);
+    }
+    
+};
+
 Peer.prototype.start = function () {
     var self = this;
 
@@ -237,19 +258,27 @@ Peer.prototype.end = function () {
     this.handleStreamRemoved();
 };
 
+Peer.prototype.handleRemoteTrackAdded = function (event) {
+    console.log("REMOTE TRACK ADDED", event);
+}
+
 Peer.prototype.handleRemoteStreamAdded = function (event) {
-    var self = this;
-    if (this.stream) {
-        this.logger.warn('Already have a remote stream');
-    } else {
-        this.stream = event.stream;
+    // var self = this;
+     console.log("REMOTE STREAM ADDED ", event.stream);
+    // if (this.stream) {
+    //     this.logger.warn('Already have a remote stream');
+    // // } else {
+        var streamObj = {};
+        streamObj.stream = event.stream;
+        this.streams.push(streamObj);
+
         // FIXME: addEventListener('ended', ...) would be nicer
         // but does not work in firefox
-        this.stream.onended = function () {
-            self.end();
-        };
-        this.parent.emit('peerStreamAdded', this);
-    }
+        // event.stream.onended = function (this) {
+        //    // self.end();
+        // };
+        this.parent.emit('peerStreamAdded', streamObj);
+   // }
 };
 
 Peer.prototype.handleStreamRemoved = function () {

@@ -148,9 +148,13 @@ Peer.prototype.handleMessage = function (message) {
     }
 };
 
+Peer.prototype.getStats = function(callback){
+    var stats = this.pc.getStats(callback);
+    return stats;
+};
 /* add new local stream to peer connection object */
 Peer.prototype.addStream = function(stream){
-    console.log("add stream to peer");
+   // console.log("add stream to peer");
      this.pc.addStream(stream);
 };
 // send via signalling channel
@@ -259,12 +263,12 @@ Peer.prototype.end = function () {
 };
 
 Peer.prototype.handleRemoteTrackAdded = function (event) {
-    console.log("REMOTE TRACK ADDED", event);
+   // console.log("REMOTE TRACK ADDED", event);
 }
 
 Peer.prototype.handleRemoteStreamAdded = function (event) {
     // var self = this;
-     console.log("REMOTE STREAM ADDED ", event.stream);
+    // console.log("REMOTE STREAM ADDED ", event.stream);
     // if (this.stream) {
     //     this.logger.warn('Already have a remote stream');
     // // } else {

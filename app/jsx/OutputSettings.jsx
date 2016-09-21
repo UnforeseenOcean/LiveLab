@@ -10,6 +10,6 @@ module.exports = React.createClass({
 		var opts = this.props.liveLab.devices.audiooutput.map(function(dev){
 			return {label: dev.label, value: dev.deviceId};
 		});
-		return <Dropdown {...this.props} label="Select audio output" value={this.props.handler.audio.sinkId} options={opts} onChange={this.select}/>;
+		return <Dropdown {...this.props}  label={"audio output"} value={this.props.handler.audio.sinkId} options={opts} onChange={this.select}/>;
 	}
 });

@@ -1,3 +1,4 @@
+
 var React = require('react');
 var ReactDOM = require('react-dom');
 var VideoContainer = require('./VideoContainer.jsx');
@@ -13,6 +14,7 @@ module.exports = React.createClass({
 	toggleFullscreen: function(){
 		var isFirefox = typeof InstallTrigger !== 'undefined';
 		 var isChrome = !!window.chrome && !!window.chrome.webstore;
+		 this.childWindow.focus();
 		if(this.state.fullscreen){
 			if (isFirefox == true) {
                 this.childWindow.document.getElementsByTagName('video')[0].mozCancelFullscreen();
@@ -78,6 +80,7 @@ module.exports = React.createClass({
 			} else {
 				controls.push(<i className="fa fa-volume-up stream-controls" onClick={this.props.handler.toggleMute.bind(this.props.handler)}></i>);
 			}
+			controls.push(<OutputSettings {...this.props}/>);
 		}
 		if(this.props.handler.hasVideo){
 			if(!this.state.showWindow){
@@ -91,12 +94,9 @@ module.exports = React.createClass({
 				}
 			}
 		}
-		controls.push(<i className="fa fa-cog stream-controls" onClick={this.showSettings}></i>);
+		//controls.push(<i className="fa fa-cog stream-controls" onClick={this.showSettings}></i>);
 
-		var settings = [];
-		if(this.state.showSettings){
-			settings = <OutputSettings {...this.props}/>;
-		}
+		
 		var divStyle = {
 			position: "absolute",
 			background: "rgba(0, 0, 0, 0.4)",
@@ -104,6 +104,6 @@ module.exports = React.createClass({
 			width: "100%",
 			textAlign: "right"
 		}
-		return <div style={divStyle}>{controls}{settings}</div>
+		return <div style={divStyle}>{controls}</div>
 	}
 });

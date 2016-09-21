@@ -20,6 +20,9 @@ function LiveLabRTC(opts) {
     // attach detected support for convenience
     this.capabilities = webrtcSupport;
 
+    this.connectionReady = false;
+
+    this.localStreamReady = false;
     // call WildEmitter constructor
     WildEmitter.call(this);
 
@@ -27,7 +30,8 @@ function LiveLabRTC(opts) {
 
     connection.on('connect', function () {
         self.emit('connectionReady', connection.getSessionid());
-         self.emit('readyToCall', self.connection.getSessionid());
+        self.connectionReady = true;
+        if(self.localMediaReady) self.emit('readyToCall', self.connection.getSessionid());
     });
 
     connection.on('message', function (message) {
@@ -176,9 +180,9 @@ LiveLabRTC.prototype.handlePeerStreamAdded = function (peer) {
 LiveLabRTC.prototype.joinRoom = function (name, cb) {
     var self = this;
     this.roomName = name;
-    console.log("JOINIGN ROOM", name);
+    //console.log("JOINIGN ROOM", name);
     this.connection.emit('join', name, function (err, roomDescription) {
-        console.log('join CB', err, roomDescription);
+       // console.log('join CB', err, roomDescription);
 
         if (err) {
             self.emit('error', err);
@@ -226,6 +230,10 @@ LiveLabRTC.prototype.startLocalVideo = function () {
         if (err) {
             self.emit('localMediaError', err);
         } else {
+            console.log("local media");
+            self.localMediaReady = true;
+            self.emit('localMediaReady', err);
+            if(self.connectionReady) self.emit('readyToCall', self.connection.getSessionid());
             //attachMediaStream(stream, self.getLocalVideoContainer(), self.config.localVideo);
         }
     });

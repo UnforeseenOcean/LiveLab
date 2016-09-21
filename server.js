@@ -61,7 +61,7 @@ var getIPAddresses = function () {
 
 // test cleanup.js
 // loads module and registers app specific cleanup callback...
-var cleanup = require('./cleanup').Cleanup(myCleanup);
+//var cleanup = require('./cleanup').Cleanup(myCleanup);
 //var cleanup = require('./cleanup').Cleanup(); // will call noOp
 
 
@@ -93,8 +93,8 @@ wss.on("connection", function (ws) {
                             if(status=="closed"){
                                 ports[message.port] = "open";
                                 portscanner.findAPortNotInUse(8000, 9000, '127.0.0.1', function(error, port) {
-                                    console.log('AVAILABLE PORT AT: ' + port)
-                                    addSocketUDPConnection(port, parseInt(message.port), message.name);
+                                    console.log('AVAILABLE PORT AT: ' + port);
+                                    addSocketUDPConnection(port, parseInt(message.port), message.name, ws);
                                     ws.send(JSON.stringify({"type": "new channel", "port": port, "udpPort": message.port}));
                                 });
                                 //addUDPServer(message.port, ws, message.name);
@@ -127,9 +127,34 @@ wss.on("connection", function (ws) {
     });
 });
 
+//addSocketUDPConnection(8001, 3000, "hey");
 
+function addSocketUDPConnection(socketPort, udpPort, name, ws){
+  //var socketServer = https.createServer(options).listen(socketPort);
+  var udpServer = dgram.createSocket('udp4');
+  
+ 
+  udpServer.on('message', (msg, rinfo) => {
+   // socketServer.send(msg);
+   var osc = oscMin.fromBuffer(msg);
+  // wss.clients.forEach(function each(client) {
+          ws.send(JSON.stringify({"type": "channel message", "name": name, "osc": osc, "udpPort": udpPort}));
+   //   });
+   // console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
+   
+     /* wss.clients.forEach(function each(client) {
+          client.send(msg);
+      });*/
+  
+  });
+  udpServer.on('listening', () => {
+      var address = udpServer.address();
+  console.log(`server listening ${address.address}:${address.port}`);
+  });
+  udpServer.bind(udpPort);
+}
 //create a new socket<-->UDP connection
-function addSocketUDPConnection(socketPort, udpPort, name){
+/*function addSocketUDPConnection(socketPort, udpPort, name){
     var socketServer = https.createServer(options).listen(socketPort);
     var socketChannel = new WebSocket.Server({
         server: socketServer
@@ -167,31 +192,5 @@ function addSocketUDPConnection(socketPort, udpPort, name){
             raw: true
         });
     });
-}
+}*/
 
-
-// defines app specific callback...
-function myCleanup() {
-  console.log('App specific cleanup code...');
-};
-
-// All of the following code is only needed for test demo
-
-// Prevents the program from closing instantly
-process.stdin.resume();
-
-// Emits an uncaught exception when called because module does not exist
-function error() {
-  console.log('error');
-  var x = require('');
-};
-
-// Try each of the following one at a time:
-
-// Uncomment the next line to test exiting on an uncaught exception
-//setTimeout(error,2000);
-
-// Uncomment the next line to test exiting normally
-//setTimeout(function(){process.exit(3)}, 2000);
-
-// Type Ctrl-C to test forced exit

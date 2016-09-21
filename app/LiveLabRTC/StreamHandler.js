@@ -17,6 +17,10 @@ function StreamHandler(peer, context, parent){
    for(var i = 0; i < this.tracks.length; i++){
     if(this.tracks[i].kind=="audio") this.hasAudio = true;
     if(this.tracks[i].kind=="video") this.hasVideo = true;
+    /*not yet supported, will allow finding out what capabilities are supported by each track 
+    https://developer.mozilla.org/en-US/docs/Web/API/Media_Streams_API#Capabilities_and_constraints*/
+    //var capab = this.tracks[i].getCapabilities();
+    
    }
    peer.handler = this;
 
@@ -50,6 +54,13 @@ StreamHandler.prototype.toggleMute = function(){
   this.audio.muted = this.muted;
  //console.log("UPDATE", this.update);
   this.parent.update();
+}
+
+StreamHandler.prototype.updateVolume = function(e){
+  console.log("VOL UPDATE", e.target.value);
+  this.volume = e.target.value;
+  this.parent.update();
+  this.audio.volume = e.target.value;
 }
 
 StreamHandler.prototype.setOutputSink = function(id){

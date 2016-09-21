@@ -1,5 +1,8 @@
 {
 	"room": null,
+  "controlPanel": {
+      "columnWidth": 500
+    },
 	"rtc": {
        "autoRequestMedia": true,
        "url": "https://sandbox.simplewebrtc.com:443/",
